@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="es" data-theme="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Buscador no oficial de receptores judiciales en Chile por comuna, tribunal o Corte." />
+  <title>Receptores Chile · Buscador no oficial</title>
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <nav class="nav-wrap" aria-label="Principal">
+      <a class="brand" href="#top" aria-label="Receptores Chile inicio">
+        <span class="brand-mark" aria-hidden="true">⚖️</span>
+        <span>
+          <strong>Receptores Chile</strong>
+          <small>Buscador no oficial</small>
+        </span>
+      </a>
+      <div class="nav-actions">
+        <button class="ghost-btn" id="aboutBtn" type="button">¿Qué es un receptor?</button>
+        <button class="icon-btn" id="themeToggle" type="button" aria-label="Cambiar modo claro u oscuro">◐</button>
+      </div>
+    </nav>
+  </header>
+
+  <main id="top" class="app-shell">
+    <section class="hero panel">
+      <div class="hero-copy">
+        <span class="status-pill">No oficial · client-side · sin tracking</span>
+        <h1>Busca receptores judiciales por comuna, tribunal o Corte.</h1>
+        <p>Para abogados, procuradores y usuarios que necesitan ubicar un contacto para diligenciar con mejor contexto territorial.</p>
+      </div>
+      <form class="search-box" id="searchForm" role="search">
+        <label for="searchInput">Buscar receptor, comuna, tribunal, Corte, región o teléfono</label>
+        <div class="search-row">
+          <input id="searchInput" type="search" autocomplete="off" spellcheck="false" placeholder="Busca por comuna: Maipú, Viña, Temuco…" />
+          <button type="submit">Buscar</button>
+        </div>
+        <div class="quick-examples" aria-label="Búsquedas sugeridas">
+          <button type="button" data-query="Puente Alto">Puente Alto</button>
+          <button type="button" data-query="San Miguel">San Miguel</button>
+          <button type="button" data-query="Viña civil">Viña civil</button>
+          <button type="button" data-query="garantía Maipú">garantía Maipú</button>
+        </div>
+      </form>
+      <aside class="ad-card" id="heroAd" aria-label="Banner interno"></aside>
+    </section>
+
+    <section class="filters panel" aria-label="Filtros de búsqueda">
+      <div class="filter-grid">
+        <label>Corte
+          <select id="filterCourt"><option value="">Todas</option></select>
+        </label>
+        <label>Región
+          <select id="filterRegion"><option value="">Todas</option></select>
+        </label>
+        <label>Comuna
+          <select id="filterComuna"><option value="">Todas</option></select>
+        </label>
+        <label>Materia / tipo
+          <select id="filterTipo">
+            <option value="">Todas</option>
+            <option value="civil">Civil / letras</option>
+            <option value="garantia">Garantía</option>
+            <option value="penal">Juicio oral penal</option>
+            <option value="corte">Corte</option>
+          </select>
+        </label>
+      </div>
+      <div class="toggle-row">
+        <label><input id="filterWhatsapp" type="checkbox" /> Tiene WhatsApp</label>
+        <label><input id="filterEmail" type="checkbox" /> Tiene email</label>
+        <label><input id="filterStrong" type="checkbox" /> Solo coincidencias fuertes</label>
+      </div>
+    </section>
+
+    <section class="summary-bar" aria-live="polite">
+      <div>
+        <strong id="resultCount">Cargando fuentes…</strong>
+        <span id="resultHint">Preparando índice local.</span>
+      </div>
+      <button id="copyVisibleBtn" class="ghost-btn" type="button">Copiar resultados visibles</button>
+    </section>
+
+    <section class="results-layout">
+      <div id="results" class="results" aria-live="polite"></div>
+      <aside class="side-column">
+        <div class="mini-panel">
+          <h2>Uso responsable</h2>
+          <p>Este sitio cruza fuentes del proyecto y marca datos incompletos. Antes de encargar una diligencia, verifica vigencia, territorio, arancel y disponibilidad.</p>
+        </div>
+        <div class="ad-card" id="sideAd" aria-label="Banner interno"></div>
+      </aside>
+    </section>
+
+    <section class="legal-note panel" id="legalNote">
+      <h2>Base jurídica mínima</h2>
+      <p>Los receptores son ministros de fe pública encargados de hacer saber resoluciones fuera de las oficinas de los secretarios y evacuar diligencias que los tribunales les encomienden. Sirven a la Corte Suprema, Cortes de Apelaciones y juzgados de letras del territorio jurisdiccional al que están adscritos.</p>
+      <p>La regla territorial permite practicar actuaciones en otra comuna comprendida dentro del territorio jurisdiccional de la misma Corte de Apelaciones. Además, existe regla especial Santiago/San Miguel: los receptores adscritos a una de esas Cortes pueden ejercer en la otra, sin necesidad de exhorto para esas notificaciones.</p>
+      <p class="muted">No oficial. No reemplaza consulta al Poder Judicial, al tribunal ni a la normativa vigente.</p>
+    </section>
+  </main>
+
+  <dialog id="detailDialog" class="detail-dialog">
+    <button class="dialog-close" id="closeDialog" type="button" aria-label="Cerrar">×</button>
+    <div id="detailContent"></div>
+  </dialog>
+
+  <dialog id="aboutDialog" class="detail-dialog">
+    <button class="dialog-close" id="closeAbout" type="button" aria-label="Cerrar">×</button>
+    <div class="dialog-body">
+      <span class="status-pill">Explicación breve</span>
+      <h2>¿Qué es un receptor judicial?</h2>
+      <p>Es un ministro de fe pública que practica notificaciones y diligencias ordenadas por tribunales. Puede actuar dentro del territorio jurisdiccional correspondiente y, bajo ciertas reglas, en comunas de la misma Corte.</p>
+      <p>Este buscador intenta responder una pregunta práctica: “¿a quién puedo contactar para diligenciar en esta comuna, tribunal o territorio?”. La respuesta siempre debe verificarse antes de encargar la gestión.</p>
+    </div>
+  </dialog>
+
+  <footer class="footer">
+    <p><strong>Receptores Chile</strong> · Sitio no oficial · Fuentes locales del proyecto · Sin backend, sin tracking y sin API publicitaria.</p>
+    <p id="sourceMeta">Cargando metadatos…</p>
+  </footer>
+
+  <script src="assets/app.js" defer></script>
+</body>
+</html>
