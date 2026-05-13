@@ -468,6 +468,17 @@ h1 {
   font-size: 13px;
 }
 
+.card-button.whatsapp {
+  background: #e4f3eb;
+  color: var(--ok);
+  border-color: rgba(21, 128, 61, .24);
+}
+
+.card-button.phone,
+.card-button.email {
+  background: #f8f5ef;
+}
+
 .card-button.report {
   color: var(--danger);
 }

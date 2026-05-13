@@ -192,12 +192,20 @@
   }
 
   function normalizeRow(raw) {
+    const emails = extractUniqueEmails(
+      raw.Correo_Principal,
+      raw.Correo,
+      raw.Email,
+      raw.Correo_Alternativo
+    );
+
     const row = {
       Nombre: cleanValue(raw.Nombre),
       Corte: cleanValue(raw.Corte),
       Tribunal: cleanValue(raw.Tribunal),
-      Correo_Principal: cleanValue(raw.Correo_Principal || raw.Correo || raw.Email),
-      Correo_Alternativo: cleanValue(raw.Correo_Alternativo),
+      Correo_Principal: emails[0] || "",
+      Correo_Alternativo: emails.slice(1).join(" · "),
+      _Correos: emails,
       Telefono_Celular: cleanValue(raw.Telefono_Celular || raw.Celular || raw.Teléfono_Celular),
       Telefono_Fijo: cleanValue(raw.Telefono_Fijo || raw.Fijo || raw.Teléfono_Fijo),
       Recomendaciones: cleanValue(raw.Recomendaciones)
@@ -207,8 +215,7 @@
       row.Nombre,
       row.Corte,
       row.Tribunal,
-      row.Correo_Principal,
-      row.Correo_Alternativo,
+      emails.join(" "),
       row.Telefono_Celular,
       row.Telefono_Fijo
     ].join(" "));
@@ -299,8 +306,19 @@
 
     const actions = document.createElement("div");
     actions.className = "card-actions";
+
+    const whatsappHref = buildReceiverWhatsAppHref(row);
+    if (whatsappHref) {
+      actions.appendChild(createLinkButton("WhatsApp", whatsappHref, "whatsapp"));
+    } else {
+      const callHref = buildCallHref(row);
+      if (callHref) actions.appendChild(createLinkButton("Llamar", callHref, "phone"));
+    }
+
+    const primaryEmail = getPrimaryEmail(row);
+    if (primaryEmail) actions.appendChild(createLinkButton("Correo", buildReceiverEmailHref(row, primaryEmail), "email"));
+
     actions.appendChild(createButton("Copiar", () => copyRow(row)));
-    actions.appendChild(createLinkButton("Recomendar", buildWhatsAppHref(`Quiero recomendar a ${row.Nombre || "este receptor"}.`)));
     actions.appendChild(createLinkButton("Reportar dato", buildMailto(
       `Dato raro: ${row.Nombre || "receptor"}`,
       encodeURIComponent(`Hola, encontré un dato raro en Receptores Chile.\n\nNombre: ${row.Nombre}\nCorte: ${row.Corte}\nTribunal: ${row.Tribunal}\n\nDetalle:`)
@@ -329,7 +347,7 @@
 
   function createEmailFragment(row) {
     const fragment = document.createDocumentFragment();
-    const emails = [row.Correo_Principal, row.Correo_Alternativo].filter(Boolean);
+    const emails = getUniqueEmails(row);
     if (!emails.length) {
       fragment.append("No informado");
       return fragment;
@@ -338,7 +356,7 @@
     emails.forEach((email, index) => {
       if (index) fragment.append(" · ");
       const link = document.createElement("a");
-      link.href = `mailto:${email}`;
+      link.href = buildReceiverEmailHref(row, email);
       link.textContent = email;
       fragment.appendChild(link);
     });
@@ -474,12 +492,12 @@
   }
 
   function formatRowForCopy(row) {
+    const emails = getUniqueEmails(row);
     return [
       `Nombre: ${row.Nombre || ""}`,
       `Corte: ${row.Corte || ""}`,
       `Tribunal: ${row.Tribunal || ""}`,
-      `Correo principal: ${row.Correo_Principal || "No informado"}`,
-      `Correo alternativo: ${row.Correo_Alternativo || "No informado"}`,
+      `Correo${emails.length > 1 ? "s" : ""}: ${emails.length ? emails.join(" · ") : "No informado"}`,
       `Teléfono celular: ${row.Telefono_Celular || "No informado"}`,
       `Teléfono fijo: ${row.Telefono_Fijo || "No informado"}`
     ].join("\n");
@@ -506,7 +524,7 @@
   }
 
   function hasEmail(row) {
-    return Boolean(row.Correo_Principal || row.Correo_Alternativo);
+    return getUniqueEmails(row).length > 0;
   }
 
   function hasPhone(row) {
@@ -523,6 +541,34 @@
     const string = String(value).trim();
     if (!string || /^(nan|null|undefined)$/i.test(string)) return "";
     return string;
+  }
+
+  function extractUniqueEmails(...values) {
+    const emails = [];
+    const seen = new Set();
+    const emailRegex = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+
+    values.forEach(value => {
+      const string = cleanValue(value);
+      if (!string) return;
+
+      const matches = string.match(emailRegex) || [];
+      matches.forEach(match => {
+        const email = match.trim().replace(/[.,;:]+$/, "");
+        const key = email.toLowerCase();
+        if (!seen.has(key)) {
+          seen.add(key);
+          emails.push(email);
+        }
+      });
+    });
+
+    return emails;
+  }
+
+  function getUniqueEmails(row) {
+    if (Array.isArray(row._Correos)) return row._Correos;
+    return extractUniqueEmails(row.Correo_Principal, row.Correo_Alternativo);
   }
 
   function normalizeText(value) {
@@ -545,7 +591,62 @@
     return raw;
   }
 
-  function buildWhatsAppHref(message) {
+  function getPrimaryEmail(row) {
+    return getUniqueEmails(row)[0] || "";
+  }
+
+  function getReceiverWhatsAppNumber(row) {
+    const raw = cleanValue(row.Telefono_Celular);
+    if (!raw) return "";
+
+    const digits = raw.replace(/\D/g, "");
+    if (!digits) return "";
+
+    if (digits.length === 11 && digits.startsWith("56") && digits[2] === "9") return digits;
+    if (digits.length === 9 && digits.startsWith("9")) return `56${digits}`;
+    if (digits.length === 8) return ""; // probablemente teléfono fijo; mejor no abrir WhatsApp.
+    return "";
+  }
+
+
+  function buildReceiverEmailHref(row, email) {
+    const subject = `Consulta diligencia - ${row.Nombre || "Receptor judicial"}`;
+    const body = [
+      "Hola, te escribo porque encontré tus datos en Receptores Chile.",
+      "",
+      "Quisiera consultar disponibilidad y valor aproximado para una diligencia.",
+      "",
+      "Datos de referencia:",
+      `- Receptor/a: ${row.Nombre || ""}`,
+      `- Corte: ${row.Corte || ""}`,
+      `- Tribunal: ${row.Tribunal || ""}`,
+      "",
+      "Muchas gracias."
+    ].join("\n");
+
+    return `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  }
+
+  function buildReceiverWhatsAppHref(row) {
+    const number = getReceiverWhatsAppNumber(row);
+    if (!number) return "";
+
+    const message = [
+      "Hola, te escribo porque encontré tus datos en Receptores Chile.",
+      "Quisiera consultar disponibilidad para una diligencia."
+    ].join(" ");
+    return `https://wa.me/${number}?text=${encodeURIComponent(message)}`;
+  }
+
+  function buildCallHref(row) {
+    const phone = row.Telefono_Celular || row.Telefono_Fijo || "";
+    const digits = String(phone).replace(/\D/g, "");
+    if (!digits) return "";
+    const normalized = digits.startsWith("56") ? `+${digits}` : `+56${digits}`;
+    return `tel:${normalized}`;
+  }
+
+  function buildSiteWhatsAppHref(message) {
     return `https://wa.me/${CONTACT_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
   }
 
@@ -568,7 +669,7 @@
   function withCacheBust(url) {
     if (url.startsWith("http")) return url;
     const separator = url.includes("?") ? "&" : "?";
-    return `${url}${separator}v=2026-05-13`;
+    return `${url}${separator}v=2026-05-13-email-dedupe`;
   }
 
   function debounce(fn, delay = 120) {
