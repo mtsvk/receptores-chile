@@ -1,55 +1,37 @@
-# Receptores Chile · prototipo client-side
+# Receptores Chile
 
-Buscador no oficial, estático y sin backend de receptores judiciales en Chile.
-
-## Fuentes usadas
-
-- `Poder Judicial - Transparencia.xlsx`: fuente primaria para nombres, Corte, tribunal, correo, celular y fijo.
-- `Receptores-COT.txt`: base jurídica mínima sobre receptores judiciales, arts. 390 a 393 COT.
-- `Juzgados-Código-Orgánico-de-Tribunales.txt`: juzgados civiles/letras, arts. 28 a 40 COT, y territorios de Cortes, arts. 54 y 55 COT.
-- `juzgados-de-garantía.txt`: juzgados de garantía y comunas de competencia.
-- `Tribunal-Juicio-Oral.txt`: tribunales de juicio oral en lo penal y comunas de competencia.
-- `Comunas-de-Chile.txt`: normalización territorial por CUT, provincia, región y coordenadas.
-- `neocities-receptoreschile.zip`: referencia técnica/prototipo anterior, no fuente primaria.
-
-## Cómo probar
-
-Como los datos se cargan con `fetch()`, conviene servir la carpeta con un servidor estático:
-
-```bash
-cd receptores_chile_site
-python -m http.server 8000
-```
-
-Abrir: `http://localhost:8000`.
-
-También puede subirse tal cual a Neocities, GitHub Pages o Cloudflare Pages.
+Buscador client-side de receptores judiciales, con auspicios raros rotativos.
 
 ## Estructura
 
-```text
+```txt
 index.html
-assets/app.js
-assets/styles.css
-data/receptores.json
-data/tribunales.json
-data/comunas.json
-data/cortes.json
-data/search-index.json
-data/meta.json
+styles.css
+script.js
+.nojekyll
+assets/ads/
+data/ads.json
+data/receptores_poder_judicial.json
+data/receptores_poder_judicial.csv
+tools/prepare_ads.py
+tools/prepare_ads.ps1
 ```
 
-## Reglas importantes
+## Auspicios
 
-- Sitio no oficial.
-- No usa backend.
-- No usa tracking.
-- No usa API oficial de WhatsApp Business.
-- Solo genera enlaces `wa.me` con mensaje prellenado.
-- No usa Google Ads ni API publicitaria.
-- Los banners son locales y configurables en el array `ADS`.
-- Los datos incompletos se marcan con flags de calidad.
+El sitio usa seis banners optimizados en `assets/ads/`:
 
-## Re-generar datos
+- `pan-caliente-960.jpg` / `pan-caliente-640.jpg`
+- `cafe-pasillo-960.jpg` / `cafe-pasillo-640.jpg`
+- `completo-italiano-960.jpg` / `completo-italiano-640.jpg`
+- `archivador-sentimental-960.jpg` / `archivador-sentimental-640.jpg`
+- `timbre-mistico-960.jpg` / `timbre-mistico-640.jpg`
+- `plantita-960.jpg` / `plantita-640.jpg`
 
-El script usado para convertir las fuentes a JSON está en `tools/build_receptores_data.py`.
+Si generas nuevas imágenes PNG con los nombres simples `marraqueta.png`, `cafepasillo.png`, `completo.png`, `archivador.png`, `timbre.png` y `plantita.png`, ejecuta:
+
+```powershell
+python .	ools\prepare_ads.py
+```
+
+Eso crea automáticamente las versiones JPEG de 960×320 y 640×213.
