@@ -168,7 +168,7 @@
     const cortes = counts.cortes || uniqueSorted(state.rows.map(row => row.corte)).length;
     const comunas = counts.comunas || uniqueSorted(state.rows.flatMap(row => row.comunas_cubiertas)).length;
 
-    els.datasetLine.textContent = `${formatNumber(total)} receptores · ${formatNumber(cortes)} Cortes · ${formatNumber(comunas)} comunas · actualización ${generated || "no informada"}`;
+    els.datasetLine.textContent = `${formatNumber(total)} receptores \u00b7 ${formatNumber(cortes)} Cortes \u00b7 ${formatNumber(comunas)} comunas \u00b7 actualizaci\u00f3n ${generated || "no informada"}`;
     els.footerMeta.textContent = generated ? `Dataset generado: ${generated}.` : "";
 
     const primarySource = Array.isArray(state.meta?.fuentes)
@@ -176,7 +176,7 @@
       : null;
 
     if (primarySource) {
-      els.sourceText.textContent = `Poder Judicial — ${primarySource.archivo}. ${primarySource.uso || ""}`.trim();
+      els.sourceText.textContent = `Poder Judicial \u2014 ${primarySource.archivo}. ${primarySource.uso || ""}`.trim();
     }
   }
 
@@ -215,12 +215,12 @@
 
     const shown = visible.length;
     els.resultStatus.textContent = shown < total
-      ? `${formatNumber(total)} resultados · mostrando ${formatNumber(shown)}`
+      ? `${formatNumber(total)} resultados \u00b7 mostrando ${formatNumber(shown)}`
       : `${formatNumber(total)} resultado${total === 1 ? "" : "s"}`;
 
     if (shown < total) {
       const remaining = total - shown;
-      els.loadMore.textContent = `Mostrar ${formatNumber(Math.min(PAGE_SIZE, remaining))} más`;
+      els.loadMore.textContent = `Mostrar ${formatNumber(Math.min(PAGE_SIZE, remaining))} m\u00e1s`;
     }
   }
 
@@ -305,7 +305,7 @@
       wa.href = `https://wa.me/${row.telefono_whatsapp_normalizado}`;
       wa.target = "_blank";
       wa.rel = "noopener noreferrer";
-      wa.textContent = "WhatsApp ↗";
+      wa.textContent = "WhatsApp \u2197";
       actions.appendChild(wa);
     }
 
@@ -330,7 +330,7 @@
     const parts = [];
     if (communeCount) parts.push(`${communeCount} comuna${communeCount === 1 ? "" : "s"}`);
     if (tribunalCount) parts.push(`${tribunalCount} tribunal${tribunalCount === 1 ? "" : "es"}`);
-    summary.textContent = parts.length ? `Cobertura y fuente · ${parts.join(" · ")}` : "Cobertura y fuente";
+    summary.textContent = parts.length ? `Cobertura y fuente \u00b7 ${parts.join(" \u00b7 ")}` : "Cobertura y fuente";
     details.appendChild(summary);
 
     const content = document.createElement("div");
@@ -356,14 +356,14 @@
       const p = document.createElement("p");
       const strong = document.createElement("strong");
       strong.textContent = "Fuente: ";
-      p.append(strong, document.createTextNode([row.fuente, row.fecha_fuente].filter(Boolean).join(" · ")));
+      p.append(strong, document.createTextNode([row.fuente, row.fecha_fuente].filter(Boolean).join(" \u00b7 ")));
       content.appendChild(p);
     }
 
     if (row.notas) {
       const p = document.createElement("p");
       const strong = document.createElement("strong");
-      strong.textContent = "Nota metodológica: ";
+      strong.textContent = "Nota metodol\u00f3gica: ";
       p.append(strong, document.createTextNode(row.notas));
       content.appendChild(p);
     }
@@ -389,7 +389,7 @@
       .toLowerCase()
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z0-9ñ]+/g, " ")
+      .replace(/[^a-z0-9\u00f1]+/g, " ")
       .replace(/\s+/g, " ")
       .trim();
   }
