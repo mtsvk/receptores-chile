@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#ffffff">
   <meta name="description" content="Buscador no oficial de receptores judiciales en Chile por nombre, comuna, tribunal, Corte y datos de contacto.">
-  <title>Receptores Chile &#xB7; Buscador judicial</title>
-  <link rel="stylesheet" href="styles.css?v=20260828-4">
+  <title>Receptores Chile · Buscador judicial</title>
+  <link rel="stylesheet" href="styles.css?v=20260828-v2">
 </head>
 <body>
   <a class="skip-link" href="#buscador">Ir al buscador</a>
@@ -14,79 +14,77 @@
   <header class="site-header">
     <div class="shell header-inner">
       <a class="brand" href="./" aria-label="Receptores Chile, inicio">Receptores Chile</a>
-      <a class="github-link" href="https://github.com/mtsvk/receptores-chile" target="_blank" rel="noopener noreferrer">GitHub &#x2197;</a>
     </div>
   </header>
 
   <main class="shell">
     <section class="intro" aria-labelledby="page-title">
-      <p class="kicker">Directorio no oficial</p>
-      <h1 id="page-title">Buscador de receptores judiciales</h1>
-      <p class="intro-copy">
-        Consulta por receptor, tribunal, comuna o Corte de Apelaciones. Los datos se procesan localmente en tu navegador; el sitio no usa backend ni tracking.
-      </p>
-      <p class="dataset-line" id="datasetLine">Cargando dataset&#x2026;</p>
+      <h1 id="page-title">Receptores judiciales</h1>
+      <p class="intro-copy">Busca por nombre, comuna, tribunal o Corte.</p>
+      <p class="dataset-line" id="datasetLine">Cargando datos…</p>
     </section>
 
     <section class="search-section" id="buscador" aria-label="Buscador de receptores">
-      <div class="search-control">
-        <label for="searchInput">Buscar</label>
-        <div class="search-input-wrap">
-          <input
-            id="searchInput"
-            type="search"
-            inputmode="search"
-            autocomplete="off"
-            placeholder="Nombre, comuna, tribunal, Corte, correo o tel&#xE9;fono"
-            aria-describedby="searchHelp"
-          >
-          <button id="clearSearch" class="clear-search" type="button" aria-label="Limpiar b&#xFA;squeda" hidden>Limpiar</button>
-        </div>
-        <p class="field-help" id="searchHelp">La b&#xFA;squeda ignora may&#xFA;sculas y tildes.</p>
+      <label class="visually-hidden" for="searchInput">Buscar receptor</label>
+      <div class="search-input-wrap">
+        <input
+          id="searchInput"
+          type="search"
+          inputmode="search"
+          autocomplete="off"
+          placeholder="Nombre, comuna o tribunal…"
+          aria-describedby="searchHelp"
+        >
+        <button id="clearSearch" class="clear-search" type="button" aria-label="Limpiar búsqueda" hidden>Limpiar</button>
       </div>
+      <p class="field-help" id="searchHelp">También puedes buscar por correo o teléfono. No distingue mayúsculas ni tildes.</p>
 
-      <div class="filter-grid">
+      <div class="primary-filters" aria-label="Filtros principales">
         <label>
           <span>Corte</span>
           <select id="filterCorte">
-            <option value="">Todas las Cortes</option>
+            <option value="">Todas</option>
           </select>
         </label>
         <label>
           <span>Comuna</span>
           <select id="filterComuna">
-            <option value="">Todas las comunas</option>
+            <option value="">Todas</option>
           </select>
         </label>
-        <label>
-          <span>Contacto</span>
-          <select id="filterContacto">
-            <option value="">Cualquier dato</option>
-            <option value="email">Con correo</option>
-            <option value="phone">Con tel&#xE9;fono</option>
-            <option value="whatsapp">Con WhatsApp</option>
-          </select>
-        </label>
-        <div class="filter-reset-wrap">
-          <button id="resetFilters" class="secondary-button" type="button">Restablecer</button>
-        </div>
       </div>
+
+      <details class="more-filters" id="moreFilters">
+        <summary>Más filtros</summary>
+        <div class="secondary-filters">
+          <label>
+            <span>Contacto</span>
+            <select id="filterContacto">
+              <option value="">Cualquier dato</option>
+              <option value="email">Con correo</option>
+              <option value="phone">Con teléfono</option>
+            </select>
+          </label>
+          <button id="resetFilters" class="text-button" type="button">Limpiar búsqueda y filtros</button>
+        </div>
+      </details>
     </section>
 
-    <section class="results-section" aria-labelledby="results-title">
+    <section class="results-section" aria-label="Resultados">
       <div class="results-head">
-        <div>
-          <h2 id="results-title">Resultados</h2>
-          <p id="resultStatus" role="status" aria-live="polite">Cargando&#x2026;</p>
-        </div>
+        <p id="resultStatus" role="status" aria-live="polite">Cargando…</p>
       </div>
+
+      <p class="coverage-notice" id="coverageNotice" hidden>
+        Algunos resultados usan cobertura territorial estimada. Verifica la competencia antes de encargar una diligencia.
+      </p>
 
       <div class="table-wrap" id="tableWrap" hidden>
         <table>
           <thead>
             <tr>
               <th scope="col">Receptor</th>
-              <th scope="col">Adscripci&#xF3;n</th>
+              <th scope="col">Adscripción</th>
               <th scope="col">Contacto</th>
             </tr>
           </thead>
@@ -96,36 +94,33 @@
 
       <div class="empty-state" id="emptyState" hidden>
         <strong>Sin resultados</strong>
-        <p>Prueba con un apellido, una comuna, un tribunal o una Corte distinta.</p>
+        <p>Prueba con otro apellido, comuna, tribunal o Corte.</p>
       </div>
 
       <div class="load-more-wrap" id="loadMoreWrap" hidden>
-        <button id="loadMore" class="secondary-button" type="button">Mostrar m&#xE1;s</button>
+        <button id="loadMore" class="secondary-button" type="button">Mostrar más</button>
       </div>
     </section>
 
-    <section class="notes" aria-labelledby="notes-title">
-      <h2 id="notes-title">Sobre los datos</h2>
-      <div class="notes-grid">
-        <div>
-          <h3>Fuente</h3>
-          <p id="sourceText">Poder Judicial &#x2014; archivo de transparencia incluido en el proyecto.</p>
+    <section class="methodology" aria-label="Fuente y metodología">
+      <details>
+        <summary>Fuente y metodología</summary>
+        <div class="methodology-content">
+          <p id="sourceText">Fuente principal: Poder Judicial.</p>
+          <p>Este directorio no es oficial. Parte de la cobertura territorial puede derivarse de la adscripción o jurisdicción informada; cuando ocurre, el resultado se identifica como estimado.</p>
+          <p>Verifica los datos y la competencia antes de encargar una diligencia.</p>
         </div>
-        <div>
-          <h3>Alcance</h3>
-          <p>La cobertura territorial mostrada corresponde al dataset del proyecto y, en algunos registros, puede derivarse de la jurisdicci&#xF3;n informada. Verifica el dato antes de encargar una diligencia.</p>
-        </div>
-        <div>
-          <h3>Correcciones</h3>
-          <p>Este sitio no es oficial. Si detectas un error, puedes <a href="mailto:mtsvw1@gmail.com?subject=Correcci%C3%B3n%20Receptores%20Chile">reportarlo por correo</a>.</p>
-        </div>
-      </div>
+      </details>
     </section>
   </main>
 
   <footer class="site-footer">
     <div class="shell footer-inner">
-      <p><strong>Receptores Chile</strong> &#xB7; herramienta est&#xE1;tica, sin backend ni tracking.</p>
+      <p><strong>Receptores Chile</strong> · sitio estático, sin backend ni tracking.</p>
+      <nav aria-label="Enlaces del sitio">
+        <a href="mailto:mtsvw1@gmail.com?subject=Correcci%C3%B3n%20Receptores%20Chile">Reportar error</a>
+        <a href="https://github.com/mtsvk/receptores-chile" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
+      </nav>
       <p id="footerMeta"></p>
     </div>
   </footer>
@@ -134,6 +129,6 @@
     <div class="noscript">Este buscador necesita JavaScript para cargar el dataset y filtrar los resultados.</div>
   </noscript>
 
-  <script src="script.js?v=20260828-4" defer></script>
+  <script src="script.js?v=20260828-v2" defer></script>
 </body>
 </html>

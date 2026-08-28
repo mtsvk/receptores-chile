@@ -4,6 +4,13 @@
   const DATA_URL = "data/receptores.json";
   const META_URL = "data/meta.json";
   const PAGE_SIZE = 75;
+  const ESTIMATED_FLAGS = new Set([
+    "territory_inferred_from_court_not_specific_tribunal",
+    "court_level_assignment"
+  ]);
+  const UNSAFE_WHATSAPP_FLAGS = new Set([
+    "mobile_8_digit_prefixed_9_verify"
+  ]);
 
   const state = {
     rows: [],
@@ -41,13 +48,15 @@
 
       populateFilters();
       renderMeta();
-      applyFilters();
+      restoreStateFromUrl();
+      applyFilters({ updateUrl: false });
+      revealHashTarget();
     } catch (error) {
       console.error(error);
-      els.resultStatus.textContent = "No fue posible cargar el dataset.";
+      els.resultStatus.textContent = "No fue posible cargar los datos.";
       els.emptyState.hidden = false;
       els.emptyState.querySelector("strong").textContent = "Error al cargar datos";
-      els.emptyState.querySelector("p").textContent = "Abre el sitio mediante un servidor web local o GitHub Pages; fetch() puede estar bloqueado si abres index.html directamente.";
+      els.emptyState.querySelector("p").textContent = "Si estás probando la V2 localmente, abre el proyecto mediante un servidor web y conserva la carpeta data/.";
     }
   }
 
@@ -58,10 +67,12 @@
     els.filterComuna = document.getElementById("filterComuna");
     els.filterContacto = document.getElementById("filterContacto");
     els.resetFilters = document.getElementById("resetFilters");
+    els.moreFilters = document.getElementById("moreFilters");
     els.resultStatus = document.getElementById("resultStatus");
     els.resultsBody = document.getElementById("resultsBody");
     els.tableWrap = document.getElementById("tableWrap");
     els.emptyState = document.getElementById("emptyState");
+    els.coverageNotice = document.getElementById("coverageNotice");
     els.loadMoreWrap = document.getElementById("loadMoreWrap");
     els.loadMore = document.getElementById("loadMore");
     els.datasetLine = document.getElementById("datasetLine");
@@ -73,7 +84,7 @@
     const delayedFilter = debounce(() => {
       state.visibleCount = PAGE_SIZE;
       applyFilters();
-    }, 70);
+    }, 90);
 
     els.searchInput.addEventListener("input", () => {
       els.clearSearch.hidden = !els.searchInput.value;
@@ -84,8 +95,8 @@
       els.searchInput.value = "";
       els.clearSearch.hidden = true;
       state.visibleCount = PAGE_SIZE;
-      els.searchInput.focus();
       applyFilters();
+      els.searchInput.focus();
     });
 
     [els.filterCorte, els.filterComuna, els.filterContacto].forEach(select => {
@@ -101,6 +112,7 @@
       els.filterCorte.value = "";
       els.filterComuna.value = "";
       els.filterContacto.value = "";
+      els.moreFilters.open = false;
       state.visibleCount = PAGE_SIZE;
       applyFilters();
       els.searchInput.focus();
@@ -110,15 +122,19 @@
       state.visibleCount += PAGE_SIZE;
       renderResults();
     });
+
+    window.addEventListener("hashchange", revealHashTarget);
   }
 
   function prepareRow(raw) {
     const comunas = Array.isArray(raw.comunas_cubiertas) ? raw.comunas_cubiertas.filter(Boolean) : [];
     const tribunales = Array.isArray(raw.tribunales_relacionados) ? raw.tribunales_relacionados.filter(Boolean) : [];
     const emails = Array.isArray(raw.emails) ? raw.emails.filter(Boolean) : (raw.email ? [raw.email] : []);
+    const flags = Array.isArray(raw.flags_calidad) ? raw.flags_calidad.filter(Boolean) : [];
 
     const searchText = [
       raw.nombre,
+      raw.nombre_original,
       raw.corte,
       raw.territorio,
       raw.comuna_base,
@@ -136,9 +152,12 @@
       comunas_cubiertas: comunas,
       tribunales_relacionados: tribunales,
       emails,
+      flags_calidad: flags,
       _search: normalizeText(searchText),
       _corte: normalizeText(raw.corte || ""),
-      _comunas: new Set(comunas.map(normalizeText))
+      _comunas: new Set(comunas.map(normalizeText)),
+      _coverageEstimated: flags.some(flag => ESTIMATED_FLAGS.has(flag)),
+      _unsafeWhatsapp: flags.some(flag => UNSAFE_WHATSAPP_FLAGS.has(flag))
     };
   }
 
@@ -146,16 +165,16 @@
     const cortes = uniqueSorted(state.rows.map(row => row.corte).filter(Boolean));
     const comunas = uniqueSorted(state.rows.flatMap(row => row.comunas_cubiertas));
 
-    appendOptions(els.filterCorte, cortes);
+    appendOptions(els.filterCorte, cortes, value => value.replace(/^Corte de Apelaciones de\s+/i, ""));
     appendOptions(els.filterComuna, comunas);
   }
 
-  function appendOptions(select, values) {
+  function appendOptions(select, values, format = value => value) {
     const fragment = document.createDocumentFragment();
     values.forEach(value => {
       const option = document.createElement("option");
       option.value = value;
-      option.textContent = value.replace(/^Corte de Apelaciones de\s+/i, "");
+      option.textContent = format(value);
       fragment.appendChild(option);
     });
     select.appendChild(fragment);
@@ -165,10 +184,8 @@
     const counts = state.meta?.conteos || {};
     const generated = formatDate(state.meta?.generado);
     const total = counts.receptores || state.rows.length;
-    const cortes = counts.cortes || uniqueSorted(state.rows.map(row => row.corte)).length;
-    const comunas = counts.comunas || uniqueSorted(state.rows.flatMap(row => row.comunas_cubiertas)).length;
 
-    els.datasetLine.textContent = `${formatNumber(total)} receptores \u00b7 ${formatNumber(cortes)} Cortes \u00b7 ${formatNumber(comunas)} comunas \u00b7 actualizaci\u00f3n ${generated || "no informada"}`;
+    els.datasetLine.textContent = `${formatNumber(total)} receptores · fuente Poder Judicial · actualización ${generated || "no informada"}`;
     els.footerMeta.textContent = generated ? `Dataset generado: ${generated}.` : "";
 
     const primarySource = Array.isArray(state.meta?.fuentes)
@@ -176,11 +193,33 @@
       : null;
 
     if (primarySource) {
-      els.sourceText.textContent = `Poder Judicial \u2014 ${primarySource.archivo}. ${primarySource.uso || ""}`.trim();
+      els.sourceText.textContent = `Fuente principal: Poder Judicial — ${primarySource.archivo}. ${primarySource.uso || ""}`.trim();
     }
   }
 
-  function applyFilters() {
+  function restoreStateFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const q = params.get("q") || "";
+    const corte = params.get("corte") || "";
+    const comuna = params.get("comuna") || "";
+    const contacto = params.get("contacto") || "";
+
+    els.searchInput.value = q;
+    els.clearSearch.hidden = !q;
+    setIfOptionExists(els.filterCorte, corte);
+    setIfOptionExists(els.filterComuna, comuna);
+    setIfOptionExists(els.filterContacto, contacto);
+
+    if (contacto) els.moreFilters.open = true;
+  }
+
+  function setIfOptionExists(select, value) {
+    if (!value) return;
+    const exists = [...select.options].some(option => option.value === value);
+    if (exists) select.value = value;
+  }
+
+  function applyFilters({ updateUrl = true } = {}) {
     const tokens = normalizeText(els.searchInput.value).split(/\s+/).filter(Boolean);
     const corte = normalizeText(els.filterCorte.value);
     const comuna = normalizeText(els.filterComuna.value);
@@ -191,12 +230,26 @@
       if (comuna && !row._comunas.has(comuna)) return false;
       if (contacto === "email" && !row.emails.length) return false;
       if (contacto === "phone" && !hasAnyPhone(row)) return false;
-      if (contacto === "whatsapp" && !row.telefono_valido_whatsapp) return false;
       if (tokens.length && !tokens.every(token => row._search.includes(token))) return false;
       return true;
-    });
+    }).sort(compareRows);
 
+    if (updateUrl) updateUrlState();
     renderResults();
+  }
+
+  function updateUrlState() {
+    const params = new URLSearchParams();
+    const q = els.searchInput.value.trim();
+
+    if (q) params.set("q", q);
+    if (els.filterCorte.value) params.set("corte", els.filterCorte.value);
+    if (els.filterComuna.value) params.set("comuna", els.filterComuna.value);
+    if (els.filterContacto.value) params.set("contacto", els.filterContacto.value);
+
+    const query = params.toString();
+    const next = `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
+    window.history.replaceState(null, "", next);
   }
 
   function renderResults() {
@@ -208,38 +261,34 @@
     els.emptyState.hidden = total !== 0;
     els.loadMoreWrap.hidden = visible.length >= total;
 
+    const estimatedCount = state.filtered.reduce((count, row) => count + (row._coverageEstimated ? 1 : 0), 0);
+    els.coverageNotice.hidden = !(estimatedCount > 0 && Boolean(els.filterComuna.value));
+
     if (total === 0) {
-      els.resultStatus.textContent = "0 resultados";
+      els.resultStatus.textContent = "0 receptores";
       return;
     }
 
     const shown = visible.length;
     els.resultStatus.textContent = shown < total
-      ? `${formatNumber(total)} resultados \u00b7 mostrando ${formatNumber(shown)}`
-      : `${formatNumber(total)} resultado${total === 1 ? "" : "s"}`;
+      ? `${formatNumber(total)} receptores · mostrando ${formatNumber(shown)}`
+      : `${formatNumber(total)} receptor${total === 1 ? "" : "es"}`;
 
     if (shown < total) {
       const remaining = total - shown;
-      els.loadMore.textContent = `Mostrar ${formatNumber(Math.min(PAGE_SIZE, remaining))} m\u00e1s`;
+      els.loadMore.textContent = `Mostrar ${formatNumber(Math.min(PAGE_SIZE, remaining))} más`;
     }
   }
 
   function createRow(row) {
     const tr = document.createElement("tr");
+    if (row.id) tr.id = row.id;
 
     const receiverCell = document.createElement("td");
     const name = document.createElement("p");
     name.className = "receiver-name";
     name.textContent = row.nombre || "Sin nombre";
     receiverCell.appendChild(name);
-
-    if (row.comuna_base) {
-      const base = document.createElement("p");
-      base.className = "cell-secondary";
-      base.textContent = `Comuna base del dataset: ${row.comuna_base}`;
-      receiverCell.appendChild(base);
-    }
-
     receiverCell.appendChild(createDetails(row));
 
     const assignmentCell = document.createElement("td");
@@ -253,6 +302,13 @@
       court.className = "cell-secondary";
       court.textContent = row.corte;
       assignmentCell.appendChild(court);
+    }
+
+    if (row._coverageEstimated) {
+      const estimate = document.createElement("span");
+      estimate.className = "estimate-label";
+      estimate.textContent = "Cobertura estimada · verificar";
+      assignmentCell.appendChild(estimate);
     }
 
     const contactCell = document.createElement("td");
@@ -300,20 +356,20 @@
     const actions = document.createElement("div");
     actions.className = "contact-actions";
 
-    if (row.telefono_valido_whatsapp && row.telefono_whatsapp_normalizado) {
+    if (!row._unsafeWhatsapp && row.telefono_valido_whatsapp && row.telefono_whatsapp_normalizado) {
       const wa = document.createElement("a");
       wa.href = `https://wa.me/${row.telefono_whatsapp_normalizado}`;
       wa.target = "_blank";
       wa.rel = "noopener noreferrer";
-      wa.textContent = "WhatsApp \u2197";
+      wa.textContent = "Abrir en WhatsApp ↗";
       actions.appendChild(wa);
     }
 
-    if (row.emails[0]) {
-      const mail = document.createElement("a");
-      mail.href = `mailto:${row.emails[0]}`;
-      mail.textContent = "Correo";
-      actions.appendChild(mail);
+    if (row.id) {
+      const anchor = document.createElement("a");
+      anchor.href = `#${encodeURIComponent(row.id)}`;
+      anchor.textContent = "Enlace";
+      actions.appendChild(anchor);
     }
 
     if (actions.childNodes.length) wrapper.appendChild(actions);
@@ -325,12 +381,7 @@
     details.className = "row-details";
 
     const summary = document.createElement("summary");
-    const communeCount = row.comunas_cubiertas.length;
-    const tribunalCount = row.tribunales_relacionados.length;
-    const parts = [];
-    if (communeCount) parts.push(`${communeCount} comuna${communeCount === 1 ? "" : "s"}`);
-    if (tribunalCount) parts.push(`${tribunalCount} tribunal${tribunalCount === 1 ? "" : "es"}`);
-    summary.textContent = parts.length ? `Cobertura y fuente \u00b7 ${parts.join(" \u00b7 ")}` : "Cobertura y fuente";
+    summary.textContent = row._coverageEstimated ? "Cobertura estimada y fuente" : "Cobertura y fuente";
     details.appendChild(summary);
 
     const content = document.createElement("div");
@@ -339,7 +390,7 @@
     if (row.comunas_cubiertas.length) {
       const p = document.createElement("p");
       const strong = document.createElement("strong");
-      strong.textContent = "Comunas del dataset: ";
+      strong.textContent = row._coverageEstimated ? "Comunas estimadas: " : "Comunas del dataset: ";
       p.append(strong, document.createTextNode(row.comunas_cubiertas.join(", ")));
       content.appendChild(p);
     }
@@ -356,14 +407,14 @@
       const p = document.createElement("p");
       const strong = document.createElement("strong");
       strong.textContent = "Fuente: ";
-      p.append(strong, document.createTextNode([row.fuente, row.fecha_fuente].filter(Boolean).join(" \u00b7 ")));
+      p.append(strong, document.createTextNode([row.fuente, row.fecha_fuente].filter(Boolean).join(" · ")));
       content.appendChild(p);
     }
 
     if (row.notas) {
       const p = document.createElement("p");
       const strong = document.createElement("strong");
-      strong.textContent = "Nota metodol\u00f3gica: ";
+      strong.textContent = "Nota: ";
       p.append(strong, document.createTextNode(row.notas));
       content.appendChild(p);
     }
@@ -372,11 +423,29 @@
     return details;
   }
 
+  function revealHashTarget() {
+    const id = decodeURIComponent(window.location.hash.replace(/^#/, ""));
+    if (!id || !state.filtered.length) return;
+
+    const index = state.filtered.findIndex(row => row.id === id);
+    if (index < 0) return;
+
+    if (index >= state.visibleCount) {
+      state.visibleCount = Math.ceil((index + 1) / PAGE_SIZE) * PAGE_SIZE;
+      renderResults();
+    }
+
+    requestAnimationFrame(() => {
+      document.getElementById(id)?.scrollIntoView({ block: "center" });
+    });
+  }
+
   function hasAnyPhone(row) {
     return Boolean(row.telefono || row.telefono_normalizado || row.telefono_fijo);
   }
 
   function compareRows(a, b) {
+    if (a._coverageEstimated !== b._coverageEstimated) return a._coverageEstimated ? 1 : -1;
     return String(a.nombre || "").localeCompare(String(b.nombre || ""), "es", { sensitivity: "base" });
   }
 
@@ -389,7 +458,7 @@
       .toLowerCase()
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z0-9\u00f1]+/g, " ")
+      .replace(/[^a-z0-9ñ]+/g, " ")
       .replace(/\s+/g, " ")
       .trim();
   }
@@ -398,8 +467,7 @@
     const digits = String(value).replace(/\D+/g, "");
     if (!digits) return "";
     if (digits.startsWith("56")) return `+${digits}`;
-    if (digits.length === 9) return `+56${digits}`;
-    if (digits.length === 8) return `+56${digits}`;
+    if (digits.length === 9 || digits.length === 8) return `+56${digits}`;
     return digits;
   }
 
@@ -415,7 +483,7 @@
     if (!value) return "";
     const date = new Date(`${value}T12:00:00`);
     if (Number.isNaN(date.getTime())) return String(value);
-    return new Intl.DateTimeFormat("es-CL", { day: "numeric", month: "long", year: "numeric" }).format(date);
+    return new Intl.DateTimeFormat("es-CL", { day: "numeric", month: "short", year: "numeric" }).format(date);
   }
 
   function formatNumber(value) {
