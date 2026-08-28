@@ -1,12 +1,12 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="es-CL">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#ffffff">
   <meta name="description" content="Buscador no oficial de receptores judiciales en Chile por nombre, comuna, tribunal, Corte y datos de contacto.">
-  <title>Receptores Chile · Buscador judicial</title>
-  <link rel="stylesheet" href="styles.css">
+  <title>Receptores Chile Â· Buscador judicial</title>
+  <link rel="stylesheet" href="styles.css?v=20260828-2">
 </head>
 <body>
   <a class="skip-link" href="#buscador">Ir al buscador</a>
@@ -14,7 +14,7 @@
   <header class="site-header">
     <div class="shell header-inner">
       <a class="brand" href="./" aria-label="Receptores Chile, inicio">Receptores Chile</a>
-      <a class="github-link" href="https://github.com/mtsvk/receptores-chile" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
+      <a class="github-link" href="https://github.com/mtsvk/receptores-chile" target="_blank" rel="noopener noreferrer">GitHub â†—</a>
     </div>
   </header>
 
@@ -25,7 +25,7 @@
       <p class="intro-copy">
         Consulta por receptor, tribunal, comuna o Corte de Apelaciones. Los datos se procesan localmente en tu navegador; el sitio no usa backend ni tracking.
       </p>
-      <p class="dataset-line" id="datasetLine">Cargando dataset…</p>
+      <p class="dataset-line" id="datasetLine">Cargando datasetâ€¦</p>
     </section>
 
     <section class="search-section" id="buscador" aria-label="Buscador de receptores">
@@ -37,12 +37,12 @@
             type="search"
             inputmode="search"
             autocomplete="off"
-            placeholder="Nombre, comuna, tribunal, Corte, correo o teléfono"
+            placeholder="Nombre, comuna, tribunal, Corte, correo o telÃ©fono"
             aria-describedby="searchHelp"
           >
-          <button id="clearSearch" class="clear-search" type="button" aria-label="Limpiar búsqueda" hidden>Limpiar</button>
+          <button id="clearSearch" class="clear-search" type="button" aria-label="Limpiar bÃºsqueda" hidden>Limpiar</button>
         </div>
-        <p class="field-help" id="searchHelp">La búsqueda ignora mayúsculas y tildes.</p>
+        <p class="field-help" id="searchHelp">La bÃºsqueda ignora mayÃºsculas y tildes.</p>
       </div>
 
       <div class="filter-grid">
@@ -63,7 +63,7 @@
           <select id="filterContacto">
             <option value="">Cualquier dato</option>
             <option value="email">Con correo</option>
-            <option value="phone">Con teléfono</option>
+            <option value="phone">Con telÃ©fono</option>
             <option value="whatsapp">Con WhatsApp</option>
           </select>
         </label>
@@ -77,7 +77,7 @@
       <div class="results-head">
         <div>
           <h2 id="results-title">Resultados</h2>
-          <p id="resultStatus" role="status" aria-live="polite">Cargando…</p>
+          <p id="resultStatus" role="status" aria-live="polite">Cargandoâ€¦</p>
         </div>
       </div>
 
@@ -86,7 +86,7 @@
           <thead>
             <tr>
               <th scope="col">Receptor</th>
-              <th scope="col">Adscripción</th>
+              <th scope="col">AdscripciÃ³n</th>
               <th scope="col">Contacto</th>
             </tr>
           </thead>
@@ -100,7 +100,7 @@
       </div>
 
       <div class="load-more-wrap" id="loadMoreWrap" hidden>
-        <button id="loadMore" class="secondary-button" type="button">Mostrar más</button>
+        <button id="loadMore" class="secondary-button" type="button">Mostrar mÃ¡s</button>
       </div>
     </section>
 
@@ -109,11 +109,11 @@
       <div class="notes-grid">
         <div>
           <h3>Fuente</h3>
-          <p id="sourceText">Poder Judicial — archivo de transparencia incluido en el proyecto.</p>
+          <p id="sourceText">Poder Judicial â€” archivo de transparencia incluido en el proyecto.</p>
         </div>
         <div>
           <h3>Alcance</h3>
-          <p>La cobertura territorial mostrada corresponde al dataset del proyecto y, en algunos registros, puede derivarse de la jurisdicción informada. Verifica el dato antes de encargar una diligencia.</p>
+          <p>La cobertura territorial mostrada corresponde al dataset del proyecto y, en algunos registros, puede derivarse de la jurisdicciÃ³n informada. Verifica el dato antes de encargar una diligencia.</p>
         </div>
         <div>
           <h3>Correcciones</h3>
@@ -125,7 +125,7 @@
 
   <footer class="site-footer">
     <div class="shell footer-inner">
-      <p><strong>Receptores Chile</strong> · herramienta estática, sin backend ni tracking.</p>
+      <p><strong>Receptores Chile</strong> Â· herramienta estÃ¡tica, sin backend ni tracking.</p>
       <p id="footerMeta"></p>
     </div>
   </footer>
@@ -134,6 +134,7 @@
     <div class="noscript">Este buscador necesita JavaScript para cargar el dataset y filtrar los resultados.</div>
   </noscript>
 
-  <script src="script.js" defer></script>
+  <script src="script.js?v=20260828-2" defer></script>
 </body>
 </html>
+
