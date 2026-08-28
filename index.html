@@ -1,128 +1,137 @@
 <!doctype html>
 <html lang="es-CL">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#111111" />
-  <meta name="description" content="Buscador mobile-first de receptores judiciales en Chile. Busca por receptor, Corte, tribunal, correo o teléfono." />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="description" content="Buscador no oficial de receptores judiciales en Chile por nombre, comuna, tribunal, Corte y datos de contacto.">
   <title>Receptores Chile · Buscador judicial</title>
-
-  <meta property="og:title" content="Receptores Chile" />
-  <meta property="og:description" content="Buscador simple, rápido y client-side de receptores judiciales en Chile." />
-  <meta property="og:type" content="website" />
-
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <a class="skip-link" href="#buscador">Saltar al buscador</a>
+  <a class="skip-link" href="#buscador">Ir al buscador</a>
 
-  <header class="site-hero">
-    <div class="shell hero-shell">
-      <p class="eyebrow">Receptores Chile</p>
-      <h1>Busca receptores judiciales sin sufrir más de lo necesario.</h1>
-      <p class="hero-copy">
-        Nombre, Corte, tribunal, correo o teléfono. Todo corre en tu navegador: sin login, sin backend raro, sin venderle tu alma a una planilla.
-      </p>
-      <div class="hero-actions" aria-label="Acciones principales">
-        <a class="button button-primary" href="#buscador">Buscar ahora</a>
-        <a class="button button-secondary" id="heroReportLink" href="mailto:mtsvw1@gmail.com?subject=Reporte%20Receptores%20Chile">Reportar dato raro</a>
-      </div>
-      <p class="updated-pill" id="updatedPill">Datos actualizados al 13 de mayo de 2026</p>
+  <header class="site-header">
+    <div class="shell header-inner">
+      <a class="brand" href="./" aria-label="Receptores Chile, inicio">Receptores Chile</a>
+      <a class="github-link" href="https://github.com/mtsvk/receptores-chile" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
     </div>
   </header>
 
-  <main class="shell main-shell">
-    <section class="search-panel" id="buscador" aria-labelledby="searchTitle">
-      <div class="section-heading">
-        <p class="eyebrow">Buscador</p>
-        <h2 id="searchTitle">Encuentra un receptor</h2>
+  <main class="shell">
+    <section class="intro" aria-labelledby="page-title">
+      <p class="kicker">Directorio no oficial</p>
+      <h1 id="page-title">Buscador de receptores judiciales</h1>
+      <p class="intro-copy">
+        Consulta por receptor, tribunal, comuna o Corte de Apelaciones. Los datos se procesan localmente en tu navegador; el sitio no usa backend ni tracking.
+      </p>
+      <p class="dataset-line" id="datasetLine">Cargando dataset…</p>
+    </section>
+
+    <section class="search-section" id="buscador" aria-label="Buscador de receptores">
+      <div class="search-control">
+        <label for="searchInput">Buscar</label>
+        <div class="search-input-wrap">
+          <input
+            id="searchInput"
+            type="search"
+            inputmode="search"
+            autocomplete="off"
+            placeholder="Nombre, comuna, tribunal, Corte, correo o teléfono"
+            aria-describedby="searchHelp"
+          >
+          <button id="clearSearch" class="clear-search" type="button" aria-label="Limpiar búsqueda" hidden>Limpiar</button>
+        </div>
+        <p class="field-help" id="searchHelp">La búsqueda ignora mayúsculas y tildes.</p>
       </div>
 
-      <div class="search-box" role="search">
-        <label class="sr-only" for="searchInput">Buscar receptor, Corte, tribunal, correo o teléfono</label>
-        <input
-          id="searchInput"
-          name="q"
-          type="search"
-          autocomplete="off"
-          inputmode="search"
-          placeholder="Ej.: Santiago, San Miguel, Abarca, civil, gmail..."
-        />
-        <button class="clear-button" id="clearSearch" type="button" aria-label="Limpiar búsqueda">×</button>
-      </div>
-
-      <div class="filters" aria-label="Filtros rápidos">
-        <label class="check-chip">
-          <input type="checkbox" id="filterEmail" />
-          <span>Solo con correo</span>
+      <div class="filter-grid">
+        <label>
+          <span>Corte</span>
+          <select id="filterCorte">
+            <option value="">Todas las Cortes</option>
+          </select>
         </label>
-        <label class="check-chip">
-          <input type="checkbox" id="filterPhone" />
-          <span>Solo con teléfono</span>
+        <label>
+          <span>Comuna</span>
+          <select id="filterComuna">
+            <option value="">Todas las comunas</option>
+          </select>
         </label>
-        <label class="check-chip">
-          <input type="checkbox" id="filterSantiago" />
-          <span>Santiago / San Miguel</span>
+        <label>
+          <span>Contacto</span>
+          <select id="filterContacto">
+            <option value="">Cualquier dato</option>
+            <option value="email">Con correo</option>
+            <option value="phone">Con teléfono</option>
+            <option value="whatsapp">Con WhatsApp</option>
+          </select>
         </label>
-      </div>
-
-      <div class="toolbar" aria-live="polite">
-        <p id="statusText">Cargando datos…</p>
-        <div class="toolbar-actions">
-          <button class="mini-button" id="copyVisible" type="button">Copiar visibles</button>
-          <button class="mini-button" id="randomAdButton" type="button">Cambiar auspicio</button>
+        <div class="filter-reset-wrap">
+          <button id="resetFilters" class="secondary-button" type="button">Restablecer</button>
         </div>
       </div>
     </section>
 
-    <aside id="adSlotTop" class="ad-slot" aria-label="Auspicio raro"></aside>
-
-    <section class="results-section" aria-labelledby="resultsTitle">
-      <div class="section-heading compact-heading">
-        <p class="eyebrow">Resultados</p>
-        <h2 id="resultsTitle">Listado</h2>
+    <section class="results-section" aria-labelledby="results-title">
+      <div class="results-head">
+        <div>
+          <h2 id="results-title">Resultados</h2>
+          <p id="resultStatus" role="status" aria-live="polite">Cargando…</p>
+        </div>
       </div>
-      <div id="results" class="results-grid" aria-live="polite"></div>
+
+      <div class="table-wrap" id="tableWrap" hidden>
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Receptor</th>
+              <th scope="col">Adscripción</th>
+              <th scope="col">Contacto</th>
+            </tr>
+          </thead>
+          <tbody id="resultsBody"></tbody>
+        </table>
+      </div>
+
+      <div class="empty-state" id="emptyState" hidden>
+        <strong>Sin resultados</strong>
+        <p>Prueba con un apellido, una comuna, un tribunal o una Corte distinta.</p>
+      </div>
+
+      <div class="load-more-wrap" id="loadMoreWrap" hidden>
+        <button id="loadMore" class="secondary-button" type="button">Mostrar más</button>
+      </div>
     </section>
 
-    <section class="contact-card" id="contacto" aria-labelledby="contactTitle">
-      <div>
-        <p class="eyebrow">Contacto</p>
-        <h2 id="contactTitle">¿Encontraste un error, bug, tontera o dato raro?</h2>
-        <p>
-          Escríbeme a <a href="mailto:mtsvw1@gmail.com?subject=Reporte%20Receptores%20Chile">mtsvw1@gmail.com</a>.
-          Idealmente manda nombre del receptor, tribunal y qué dato habría que revisar.
-        </p>
+    <section class="notes" aria-labelledby="notes-title">
+      <h2 id="notes-title">Sobre los datos</h2>
+      <div class="notes-grid">
+        <div>
+          <h3>Fuente</h3>
+          <p id="sourceText">Poder Judicial — archivo de transparencia incluido en el proyecto.</p>
+        </div>
+        <div>
+          <h3>Alcance</h3>
+          <p>La cobertura territorial mostrada corresponde al dataset del proyecto y, en algunos registros, puede derivarse de la jurisdicción informada. Verifica el dato antes de encargar una diligencia.</p>
+        </div>
+        <div>
+          <h3>Correcciones</h3>
+          <p>Este sitio no es oficial. Si detectas un error, puedes <a href="mailto:mtsvw1@gmail.com?subject=Correcci%C3%B3n%20Receptores%20Chile">reportarlo por correo</a>.</p>
+        </div>
       </div>
-      <a class="button button-primary" href="mailto:mtsvw1@gmail.com?subject=Reporte%20Receptores%20Chile">Reportar por correo</a>
     </section>
   </main>
 
   <footer class="site-footer">
-    <div class="shell footer-shell">
-      <p><strong>Receptores Chile</strong> · Datos actualizados al <span id="footerUpdatedAt">13 de mayo de 2026</span>.</p>
-      <p>Hecho para buscar rápido. Si algo está mal, avisa a <a href="mailto:mtsvw1@gmail.com">mtsvw1@gmail.com</a>.</p>
+    <div class="shell footer-inner">
+      <p><strong>Receptores Chile</strong> · herramienta estática, sin backend ni tracking.</p>
+      <p id="footerMeta"></p>
     </div>
   </footer>
 
-  <template id="adTemplate">
-    <a class="ad-card" href="#contacto">
-      <picture>
-        <source class="ad-source-mobile" media="(max-width: 700px)" srcset="" />
-        <img class="ad-image" src="" alt="" loading="lazy" decoding="async" />
-      </picture>
-      <div class="ad-overlay">
-        <span class="ad-label"></span>
-        <strong class="ad-title"></strong>
-        <small class="ad-text"></small>
-      </div>
-    </a>
-  </template>
-
   <noscript>
-    <div class="noscript-box">
-      Este buscador necesita JavaScript activado para cargar y filtrar los datos.
-    </div>
+    <div class="noscript">Este buscador necesita JavaScript para cargar el dataset y filtrar los resultados.</div>
   </noscript>
 
   <script src="script.js" defer></script>

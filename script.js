@@ -1,87 +1,15 @@
 (() => {
   "use strict";
 
-  const SITE_LAST_UPDATED = "13 de mayo de 2026";
-  const CONTACT_EMAIL = "mtsvw1@gmail.com";
-  const CONTACT_WHATSAPP_NUMBER = "56998895099";
-  const MAX_INITIAL_RESULTS = 24;
-  const MAX_SEARCH_RESULTS = 120;
-  const RESULT_AD_EVERY = 8;
-  const MAX_RESULT_ADS = 2;
-
-  const DATA_SOURCES = [
-    { type: "json", url: "data/receptores_poder_judicial.json" },
-    { type: "json", url: "receptores_poder_judicial.json" },
-    { type: "csv", url: "data/receptores_poder_judicial.csv" },
-    { type: "csv", url: "receptores_poder_judicial.csv" },
-    { type: "json", url: "https://receptoreschile.neocities.org/receptores_poder_judicial.json" },
-    { type: "csv", url: "https://receptoreschile.neocities.org/receptores_poder_judicial.csv" }
-  ];
-
-  const FALLBACK_ADS = [
-    {
-        "id": "pan-caliente",
-        "label": "Auspicio raro",
-        "title": "Este sitio te lo trae pan recién caliente",
-        "text": "Crujiente, útil y sin login.",
-        "href": "#contacto",
-        "image": "assets/ads/pan-caliente-960.jpg",
-        "imageMobile": "assets/ads/pan-caliente-640.jpg"
-    },
-    {
-        "id": "cafe-pasillo",
-        "label": "Traído a usted por",
-        "title": "Este buscador funciona con café de pasillo",
-        "text": "Y una cantidad razonable de desesperación.",
-        "href": "#contacto",
-        "image": "assets/ads/cafe-pasillo-960.jpg",
-        "imageMobile": "assets/ads/cafe-pasillo-640.jpg"
-    },
-    {
-        "id": "completo-italiano",
-        "label": "Pausa comercial humilde",
-        "title": "Completo italiano, diligencia completa",
-        "text": "No garantizamos mayo sin palta.",
-        "href": "#contacto",
-        "image": "assets/ads/completo-italiano-960.jpg",
-        "imageMobile": "assets/ads/completo-italiano-640.jpg"
-    },
-    {
-        "id": "archivador-sentimental",
-        "label": "Auspicio raro",
-        "title": "Archivador emocionalmente estable",
-        "text": "Ha visto cosas.",
-        "href": "#contacto",
-        "image": "assets/ads/archivador-sentimental-960.jpg",
-        "imageMobile": "assets/ads/archivador-sentimental-640.jpg"
-    },
-    {
-        "id": "timbre-mistico",
-        "label": "Pausa procesal",
-        "title": "Auspicia el timbre que todo lo certifica",
-        "text": "Pum. Constancia.",
-        "href": "#contacto",
-        "image": "assets/ads/timbre-mistico-960.jpg",
-        "imageMobile": "assets/ads/timbre-mistico-640.jpg"
-    },
-    {
-        "id": "plantita",
-        "label": "Este espacio existe gracias a",
-        "title": "La plantita que sobrevivió al cierre de mes",
-        "text": "Más resiliente que el sistema.",
-        "href": "#contacto",
-        "image": "assets/ads/plantita-960.jpg",
-        "imageMobile": "assets/ads/plantita-640.jpg"
-    }
-];
+  const DATA_URL = "data/receptores.json";
+  const META_URL = "data/meta.json";
+  const PAGE_SIZE = 75;
 
   const state = {
-    all: [],
+    rows: [],
     filtered: [],
-    ads: FALLBACK_ADS,
-    adOffset: getSessionAdOffset(),
-    dataSource: "",
-    lastQuery: ""
+    meta: null,
+    visibleCount: PAGE_SIZE
   };
 
   const els = {};
@@ -90,645 +18,415 @@
 
   async function init() {
     bindElements();
-    hydrateStaticText();
     bindEvents();
-    await loadAds();
-    renderTopAd();
-    await loadData();
+
+    try {
+      const [rowsResponse, metaResponse] = await Promise.all([
+        fetch(DATA_URL),
+        fetch(META_URL)
+      ]);
+
+      if (!rowsResponse.ok) throw new Error(`No se pudo cargar ${DATA_URL} (HTTP ${rowsResponse.status})`);
+      if (!metaResponse.ok) throw new Error(`No se pudo cargar ${META_URL} (HTTP ${metaResponse.status})`);
+
+      const [rows, meta] = await Promise.all([
+        rowsResponse.json(),
+        metaResponse.json()
+      ]);
+
+      if (!Array.isArray(rows)) throw new Error("El dataset de receptores no es una lista.");
+
+      state.rows = rows.map(prepareRow).sort(compareRows);
+      state.meta = meta;
+
+      populateFilters();
+      renderMeta();
+      applyFilters();
+    } catch (error) {
+      console.error(error);
+      els.resultStatus.textContent = "No fue posible cargar el dataset.";
+      els.emptyState.hidden = false;
+      els.emptyState.querySelector("strong").textContent = "Error al cargar datos";
+      els.emptyState.querySelector("p").textContent = "Abre el sitio mediante un servidor web local o GitHub Pages; fetch() puede estar bloqueado si abres index.html directamente.";
+    }
   }
 
   function bindElements() {
     els.searchInput = document.getElementById("searchInput");
     els.clearSearch = document.getElementById("clearSearch");
-    els.filterEmail = document.getElementById("filterEmail");
-    els.filterPhone = document.getElementById("filterPhone");
-    els.filterSantiago = document.getElementById("filterSantiago");
-    els.statusText = document.getElementById("statusText");
-    els.copyVisible = document.getElementById("copyVisible");
-    els.randomAdButton = document.getElementById("randomAdButton");
-    els.results = document.getElementById("results");
-    els.adSlotTop = document.getElementById("adSlotTop");
-    els.adTemplate = document.getElementById("adTemplate");
-    els.footerUpdatedAt = document.getElementById("footerUpdatedAt");
-    els.updatedPill = document.getElementById("updatedPill");
-    els.heroReportLink = document.getElementById("heroReportLink");
-  }
-
-  function hydrateStaticText() {
-    if (els.footerUpdatedAt) els.footerUpdatedAt.textContent = SITE_LAST_UPDATED;
-    if (els.updatedPill) els.updatedPill.textContent = `Datos actualizados al ${SITE_LAST_UPDATED}`;
-    const mailto = buildMailto("Reporte Receptores Chile", "Hola, encontré un dato raro en Receptores Chile:%0D%0A%0D%0A");
-    if (els.heroReportLink) els.heroReportLink.href = mailto;
+    els.filterCorte = document.getElementById("filterCorte");
+    els.filterComuna = document.getElementById("filterComuna");
+    els.filterContacto = document.getElementById("filterContacto");
+    els.resetFilters = document.getElementById("resetFilters");
+    els.resultStatus = document.getElementById("resultStatus");
+    els.resultsBody = document.getElementById("resultsBody");
+    els.tableWrap = document.getElementById("tableWrap");
+    els.emptyState = document.getElementById("emptyState");
+    els.loadMoreWrap = document.getElementById("loadMoreWrap");
+    els.loadMore = document.getElementById("loadMore");
+    els.datasetLine = document.getElementById("datasetLine");
+    els.footerMeta = document.getElementById("footerMeta");
+    els.sourceText = document.getElementById("sourceText");
   }
 
   function bindEvents() {
-    const rerender = debounce(() => applyFilters(), 80);
-    els.searchInput.addEventListener("input", rerender);
+    const delayedFilter = debounce(() => {
+      state.visibleCount = PAGE_SIZE;
+      applyFilters();
+    }, 70);
+
+    els.searchInput.addEventListener("input", () => {
+      els.clearSearch.hidden = !els.searchInput.value;
+      delayedFilter();
+    });
+
     els.clearSearch.addEventListener("click", () => {
       els.searchInput.value = "";
+      els.clearSearch.hidden = true;
+      state.visibleCount = PAGE_SIZE;
       els.searchInput.focus();
       applyFilters();
     });
-    els.filterEmail.addEventListener("change", applyFilters);
-    els.filterPhone.addEventListener("change", applyFilters);
-    els.filterSantiago.addEventListener("change", applyFilters);
-    els.copyVisible.addEventListener("click", copyVisibleResults);
-    els.randomAdButton.addEventListener("click", () => {
-      state.adOffset = (state.adOffset + 1) % state.ads.length;
-      sessionStorage.setItem("receptoresChileAdOffset", String(state.adOffset));
-      renderTopAd();
-      renderResults(state.filtered, { preserveStatus: true });
-    });
-  }
 
-  async function loadAds() {
-    try {
-      const response = await fetch(withCacheBust("data/ads.json"));
-      if (!response.ok) throw new Error("No ads.json");
-      const ads = await response.json();
-      if (Array.isArray(ads) && ads.length) state.ads = ads;
-    } catch (_) {
-      state.ads = FALLBACK_ADS;
-    }
-  }
-
-  async function loadData() {
-    setStatus("Cargando datos…");
-    renderEmpty("Estoy abriendo la planilla. Un segundo procesal.");
-
-    const errors = [];
-    for (const source of DATA_SOURCES) {
-      try {
-        const rows = await fetchSource(source);
-        const cleaned = rows.map(normalizeRow).filter(row => row.Nombre || row.Corte || row.Tribunal);
-        if (!cleaned.length) throw new Error("Fuente vacía");
-        state.all = cleaned.sort(sortByName);
-        state.dataSource = source.url;
+    [els.filterCorte, els.filterComuna, els.filterContacto].forEach(select => {
+      select.addEventListener("change", () => {
+        state.visibleCount = PAGE_SIZE;
         applyFilters();
-        return;
-      } catch (error) {
-        errors.push(`${source.url}: ${error.message}`);
-      }
-    }
-
-    console.error("No se pudieron cargar fuentes", errors);
-    setStatus("No se pudieron cargar los datos.");
-    renderError("No logré cargar el archivo de receptores. Revisa que exista data/receptores_poder_judicial.json o data/receptores_poder_judicial.csv.");
-  }
-
-  async function fetchSource(source) {
-    const response = await fetch(withCacheBust(source.url));
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const text = await response.text();
-
-    if (source.type === "json") {
-      const safeText = text.replace(/\bNaN\b/g, "null");
-      const data = JSON.parse(safeText);
-      if (!Array.isArray(data)) throw new Error("JSON no es una lista");
-      return data;
-    }
-
-    return parseCSV(text);
-  }
-
-  function normalizeRow(raw) {
-    const emails = extractUniqueEmails(
-      raw.Correo_Principal,
-      raw.Correo,
-      raw.Email,
-      raw.Correo_Alternativo
-    );
-
-    const row = {
-      Nombre: cleanValue(raw.Nombre),
-      Corte: cleanValue(raw.Corte),
-      Tribunal: cleanValue(raw.Tribunal),
-      Correo_Principal: emails[0] || "",
-      Correo_Alternativo: emails.slice(1).join(" · "),
-      _Correos: emails,
-      Telefono_Celular: cleanValue(raw.Telefono_Celular || raw.Celular || raw.Teléfono_Celular),
-      Telefono_Fijo: cleanValue(raw.Telefono_Fijo || raw.Fijo || raw.Teléfono_Fijo),
-      Recomendaciones: cleanValue(raw.Recomendaciones)
-    };
-
-    row._search = normalizeText([
-      row.Nombre,
-      row.Corte,
-      row.Tribunal,
-      emails.join(" "),
-      row.Telefono_Celular,
-      row.Telefono_Fijo
-    ].join(" "));
-
-    return row;
-  }
-
-  function applyFilters() {
-    const query = els.searchInput.value.trim();
-    const tokens = normalizeText(query).split(/\s+/).filter(Boolean);
-    const onlyEmail = els.filterEmail.checked;
-    const onlyPhone = els.filterPhone.checked;
-    const onlySantiago = els.filterSantiago.checked;
-
-    state.lastQuery = query;
-
-    let results = state.all.filter(row => {
-      if (onlyEmail && !hasEmail(row)) return false;
-      if (onlyPhone && !hasPhone(row)) return false;
-      if (onlySantiago && !isSantiagoOrSanMiguel(row)) return false;
-      if (!tokens.length) return true;
-      return tokens.every(token => row._search.includes(token));
-    });
-
-    results = results.sort((a, b) => scoreRow(b, tokens) - scoreRow(a, tokens) || sortByName(a, b));
-    state.filtered = results;
-    renderResults(results);
-  }
-
-  function renderResults(results, options = {}) {
-    els.results.innerHTML = "";
-
-    const hasQuery = Boolean(state.lastQuery.trim());
-    const limit = hasQuery ? MAX_SEARCH_RESULTS : MAX_INITIAL_RESULTS;
-    const visible = results.slice(0, limit);
-
-    if (!options.preserveStatus) {
-      const base = `${results.length.toLocaleString("es-CL")} resultado${results.length === 1 ? "" : "s"}`;
-      const suffix = visible.length < results.length ? ` · mostrando ${visible.length.toLocaleString("es-CL")}` : "";
-      setStatus(`${base}${suffix}`);
-    }
-
-    if (!results.length) {
-      renderEmpty("No encontré nada con esos filtros. Prueba con apellido, Corte o comuna.");
-      return;
-    }
-
-    let adsInserted = 0;
-    visible.forEach((row, index) => {
-      els.results.appendChild(createResultCard(row));
-      const shouldInsertAd = (index + 1) % RESULT_AD_EVERY === 0 && index + 1 < visible.length && adsInserted < MAX_RESULT_ADS;
-      if (shouldInsertAd) {
-        els.results.appendChild(createAdCard(pickAd(index + 1 + adsInserted)));
-        adsInserted += 1;
-      }
-    });
-
-    if (visible.length < results.length) {
-      const note = document.createElement("div");
-      note.className = "empty-state";
-      note.textContent = `Hay más resultados (${results.length.toLocaleString("es-CL")}). Escribe algo más específico para afinar la búsqueda.`;
-      els.results.appendChild(note);
-    }
-  }
-
-  function createResultCard(row) {
-    const card = document.createElement("article");
-    card.className = "result-card";
-
-    const title = document.createElement("h3");
-    title.textContent = row.Nombre || "Receptor sin nombre informado";
-    card.appendChild(title);
-
-    const badges = document.createElement("div");
-    badges.className = "badge-row";
-    badges.appendChild(createBadge(hasEmail(row) ? "Con correo" : "Sin correo", hasEmail(row) ? "ok" : "muted"));
-    badges.appendChild(createBadge(hasPhone(row) ? "Con teléfono" : "Sin teléfono", hasPhone(row) ? "ok" : "muted"));
-    if (row.Recomendaciones) badges.appendChild(createBadge(`Recomendaciones: ${row.Recomendaciones}`, "muted"));
-    card.appendChild(badges);
-
-    const meta = document.createElement("div");
-    meta.className = "meta-grid";
-    addField(meta, "Corte", row.Corte || "No informada");
-    addField(meta, "Tribunal", row.Tribunal || "No informado");
-    addField(meta, "Correo", createEmailFragment(row), true);
-    addField(meta, "Teléfono", createPhoneFragment(row), true);
-    card.appendChild(meta);
-
-    const actions = document.createElement("div");
-    actions.className = "card-actions";
-
-    const whatsappHref = buildReceiverWhatsAppHref(row);
-    if (whatsappHref) {
-      actions.appendChild(createLinkButton("WhatsApp", whatsappHref, "whatsapp"));
-    } else {
-      const callHref = buildCallHref(row);
-      if (callHref) actions.appendChild(createLinkButton("Llamar", callHref, "phone"));
-    }
-
-    const primaryEmail = getPrimaryEmail(row);
-    if (primaryEmail) actions.appendChild(createLinkButton("Correo", buildReceiverEmailHref(row, primaryEmail), "email"));
-
-    actions.appendChild(createButton("Copiar", () => copyRow(row)));
-    actions.appendChild(createLinkButton("Reportar dato", buildMailto(
-      `Dato raro: ${row.Nombre || "receptor"}`,
-      encodeURIComponent(`Hola, encontré un dato raro en Receptores Chile.\n\nNombre: ${row.Nombre}\nCorte: ${row.Corte}\nTribunal: ${row.Tribunal}\n\nDetalle:`)
-    ), "report"));
-    card.appendChild(actions);
-
-    return card;
-  }
-
-  function addField(parent, label, value, isNode = false) {
-    const wrapper = document.createElement("div");
-    wrapper.className = "field";
-
-    const labelEl = document.createElement("div");
-    labelEl.className = "field-label";
-    labelEl.textContent = label;
-
-    const valueEl = document.createElement("div");
-    valueEl.className = "field-value";
-    if (isNode) valueEl.appendChild(value);
-    else valueEl.textContent = value;
-
-    wrapper.append(labelEl, valueEl);
-    parent.appendChild(wrapper);
-  }
-
-  function createEmailFragment(row) {
-    const fragment = document.createDocumentFragment();
-    const emails = getUniqueEmails(row);
-    if (!emails.length) {
-      fragment.append("No informado");
-      return fragment;
-    }
-
-    emails.forEach((email, index) => {
-      if (index) fragment.append(" · ");
-      const link = document.createElement("a");
-      link.href = buildReceiverEmailHref(row, email);
-      link.textContent = email;
-      fragment.appendChild(link);
-    });
-    return fragment;
-  }
-
-  function createPhoneFragment(row) {
-    const fragment = document.createDocumentFragment();
-    const phones = [row.Telefono_Celular, row.Telefono_Fijo].filter(Boolean).map(formatPhone);
-    if (!phones.length) {
-      fragment.append("No informado");
-      return fragment;
-    }
-
-    phones.forEach((phone, index) => {
-      if (index) fragment.append(" · ");
-      const hrefNumber = phone.replace(/\D/g, "");
-      const link = document.createElement("a");
-      link.href = `tel:${hrefNumber.startsWith("56") ? "+" : "+56"}${hrefNumber}`;
-      link.textContent = phone;
-      fragment.appendChild(link);
-    });
-    return fragment;
-  }
-
-  function createBadge(text, variant = "") {
-    const badge = document.createElement("span");
-    badge.className = `badge ${variant}`.trim();
-    badge.textContent = text;
-    return badge;
-  }
-
-  function createButton(text, onClick) {
-    const button = document.createElement("button");
-    button.className = "card-button";
-    button.type = "button";
-    button.textContent = text;
-    button.addEventListener("click", onClick);
-    return button;
-  }
-
-  function createLinkButton(text, href, extraClass = "") {
-    const link = document.createElement("a");
-    link.className = `card-button ${extraClass}`.trim();
-    link.href = href;
-    link.target = href.startsWith("http") ? "_blank" : "";
-    link.rel = href.startsWith("http") ? "noopener noreferrer" : "";
-    link.textContent = text;
-    return link;
-  }
-
-  function renderTopAd() {
-    els.adSlotTop.innerHTML = "";
-    els.adSlotTop.appendChild(createAdCard(pickAd(0)));
-  }
-
-  function createAdCard(ad) {
-    const node = els.adTemplate.content.firstElementChild.cloneNode(true);
-    node.href = ad.href || "#contacto";
-    node.setAttribute("aria-label", `${ad.label || "Auspicio"}: ${ad.title || ""}`);
-
-    const source = node.querySelector(".ad-source-mobile");
-    const img = node.querySelector(".ad-image");
-    const label = node.querySelector(".ad-label");
-    const title = node.querySelector(".ad-title");
-    const text = node.querySelector(".ad-text");
-
-    source.srcset = ad.imageMobile || ad.image || "";
-    img.src = ad.image || ad.imageMobile || "";
-    img.alt = "";
-    img.addEventListener("error", () => node.classList.add("ad-card--fallback"), { once: true });
-
-    label.textContent = ad.label || "Auspicio raro";
-    title.textContent = ad.title || "Este espacio está disponible";
-    text.textContent = ad.text || "Humilde, útil y con cariño.";
-
-    return node;
-  }
-
-  function pickAd(index = 0) {
-    if (!state.ads.length) return FALLBACK_ADS[0];
-    return state.ads[(state.adOffset + index) % state.ads.length];
-  }
-
-  function renderEmpty(message) {
-    els.results.innerHTML = "";
-    const empty = document.createElement("div");
-    empty.className = "empty-state";
-    empty.textContent = message;
-    els.results.appendChild(empty);
-  }
-
-  function renderError(message) {
-    els.results.innerHTML = "";
-    const error = document.createElement("div");
-    error.className = "error-state";
-    error.textContent = message;
-    els.results.appendChild(error);
-  }
-
-  async function copyVisibleResults() {
-    if (!state.filtered.length) {
-      alert("No hay resultados para copiar.");
-      return;
-    }
-
-    const hasQuery = Boolean(state.lastQuery.trim());
-    const limit = hasQuery ? MAX_SEARCH_RESULTS : MAX_INITIAL_RESULTS;
-    const text = state.filtered.slice(0, limit).map(formatRowForCopy).join("\n\n---\n\n");
-    await copyText(text, "Resultados visibles copiados.");
-  }
-
-  async function copyRow(row) {
-    await copyText(formatRowForCopy(row), "Receptor copiado.");
-  }
-
-  async function copyText(text, okMessage) {
-    try {
-      await navigator.clipboard.writeText(text);
-      alert(okMessage);
-    } catch (_) {
-      const textarea = document.createElement("textarea");
-      textarea.value = text;
-      textarea.setAttribute("readonly", "");
-      textarea.style.position = "fixed";
-      textarea.style.left = "-9999px";
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand("copy");
-      textarea.remove();
-      alert(okMessage);
-    }
-  }
-
-  function formatRowForCopy(row) {
-    const emails = getUniqueEmails(row);
-    return [
-      `Nombre: ${row.Nombre || ""}`,
-      `Corte: ${row.Corte || ""}`,
-      `Tribunal: ${row.Tribunal || ""}`,
-      `Correo${emails.length > 1 ? "s" : ""}: ${emails.length ? emails.join(" · ") : "No informado"}`,
-      `Teléfono celular: ${row.Telefono_Celular || "No informado"}`,
-      `Teléfono fijo: ${row.Telefono_Fijo || "No informado"}`
-    ].join("\n");
-  }
-
-  function scoreRow(row, tokens) {
-    if (!tokens.length) return 0;
-    const name = normalizeText(row.Nombre || "");
-    const court = normalizeText(row.Corte || "");
-    const tribunal = normalizeText(row.Tribunal || "");
-    let score = 0;
-    for (const token of tokens) {
-      if (name.startsWith(token)) score += 40;
-      if (name.includes(token)) score += 18;
-      if (court.includes(token)) score += 10;
-      if (tribunal.includes(token)) score += 8;
-      if (row._search.includes(token)) score += 2;
-    }
-    return score;
-  }
-
-  function sortByName(a, b) {
-    return String(a.Nombre || "").localeCompare(String(b.Nombre || ""), "es", { sensitivity: "base" });
-  }
-
-  function hasEmail(row) {
-    return getUniqueEmails(row).length > 0;
-  }
-
-  function hasPhone(row) {
-    return Boolean(row.Telefono_Celular || row.Telefono_Fijo);
-  }
-
-  function isSantiagoOrSanMiguel(row) {
-    const haystack = normalizeText(`${row.Corte} ${row.Tribunal}`);
-    return haystack.includes("santiago") || haystack.includes("san miguel");
-  }
-
-  function cleanValue(value) {
-    if (value === null || value === undefined) return "";
-    const string = String(value).trim();
-    if (!string || /^(nan|null|undefined)$/i.test(string)) return "";
-    return string;
-  }
-
-  function extractUniqueEmails(...values) {
-    const emails = [];
-    const seen = new Set();
-    const emailRegex = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
-
-    values.forEach(value => {
-      const string = cleanValue(value);
-      if (!string) return;
-
-      const matches = string.match(emailRegex) || [];
-      matches.forEach(match => {
-        const email = match.trim().replace(/[.,;:]+$/, "");
-        const key = email.toLowerCase();
-        if (!seen.has(key)) {
-          seen.add(key);
-          emails.push(email);
-        }
       });
     });
 
-    return emails;
+    els.resetFilters.addEventListener("click", () => {
+      els.searchInput.value = "";
+      els.clearSearch.hidden = true;
+      els.filterCorte.value = "";
+      els.filterComuna.value = "";
+      els.filterContacto.value = "";
+      state.visibleCount = PAGE_SIZE;
+      applyFilters();
+      els.searchInput.focus();
+    });
+
+    els.loadMore.addEventListener("click", () => {
+      state.visibleCount += PAGE_SIZE;
+      renderResults();
+    });
   }
 
-  function getUniqueEmails(row) {
-    if (Array.isArray(row._Correos)) return row._Correos;
-    return extractUniqueEmails(row.Correo_Principal, row.Correo_Alternativo);
+  function prepareRow(raw) {
+    const comunas = Array.isArray(raw.comunas_cubiertas) ? raw.comunas_cubiertas.filter(Boolean) : [];
+    const tribunales = Array.isArray(raw.tribunales_relacionados) ? raw.tribunales_relacionados.filter(Boolean) : [];
+    const emails = Array.isArray(raw.emails) ? raw.emails.filter(Boolean) : (raw.email ? [raw.email] : []);
+
+    const searchText = [
+      raw.nombre,
+      raw.corte,
+      raw.territorio,
+      raw.comuna_base,
+      raw.tribunal_fuente,
+      ...comunas,
+      ...tribunales,
+      ...emails,
+      raw.telefono,
+      raw.telefono_normalizado,
+      raw.telefono_fijo
+    ].filter(Boolean).join(" ");
+
+    return {
+      ...raw,
+      comunas_cubiertas: comunas,
+      tribunales_relacionados: tribunales,
+      emails,
+      _search: normalizeText(searchText),
+      _corte: normalizeText(raw.corte || ""),
+      _comunas: new Set(comunas.map(normalizeText))
+    };
   }
 
-  function normalizeText(value) {
-    return String(value || "")
+  function populateFilters() {
+    const cortes = uniqueSorted(state.rows.map(row => row.corte).filter(Boolean));
+    const comunas = uniqueSorted(state.rows.flatMap(row => row.comunas_cubiertas));
+
+    appendOptions(els.filterCorte, cortes);
+    appendOptions(els.filterComuna, comunas);
+  }
+
+  function appendOptions(select, values) {
+    const fragment = document.createDocumentFragment();
+    values.forEach(value => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = value.replace(/^Corte de Apelaciones de\s+/i, "");
+      fragment.appendChild(option);
+    });
+    select.appendChild(fragment);
+  }
+
+  function renderMeta() {
+    const counts = state.meta?.conteos || {};
+    const generated = formatDate(state.meta?.generado);
+    const total = counts.receptores || state.rows.length;
+    const cortes = counts.cortes || uniqueSorted(state.rows.map(row => row.corte)).length;
+    const comunas = counts.comunas || uniqueSorted(state.rows.flatMap(row => row.comunas_cubiertas)).length;
+
+    els.datasetLine.textContent = `${formatNumber(total)} receptores · ${formatNumber(cortes)} Cortes · ${formatNumber(comunas)} comunas · actualización ${generated || "no informada"}`;
+    els.footerMeta.textContent = generated ? `Dataset generado: ${generated}.` : "";
+
+    const primarySource = Array.isArray(state.meta?.fuentes)
+      ? state.meta.fuentes.find(source => /transparencia/i.test(source.archivo || ""))
+      : null;
+
+    if (primarySource) {
+      els.sourceText.textContent = `Poder Judicial — ${primarySource.archivo}. ${primarySource.uso || ""}`.trim();
+    }
+  }
+
+  function applyFilters() {
+    const tokens = normalizeText(els.searchInput.value).split(/\s+/).filter(Boolean);
+    const corte = normalizeText(els.filterCorte.value);
+    const comuna = normalizeText(els.filterComuna.value);
+    const contacto = els.filterContacto.value;
+
+    state.filtered = state.rows.filter(row => {
+      if (corte && row._corte !== corte) return false;
+      if (comuna && !row._comunas.has(comuna)) return false;
+      if (contacto === "email" && !row.emails.length) return false;
+      if (contacto === "phone" && !hasAnyPhone(row)) return false;
+      if (contacto === "whatsapp" && !row.telefono_valido_whatsapp) return false;
+      if (tokens.length && !tokens.every(token => row._search.includes(token))) return false;
+      return true;
+    });
+
+    renderResults();
+  }
+
+  function renderResults() {
+    const total = state.filtered.length;
+    const visible = state.filtered.slice(0, state.visibleCount);
+
+    els.resultsBody.replaceChildren(...visible.map(createRow));
+    els.tableWrap.hidden = total === 0;
+    els.emptyState.hidden = total !== 0;
+    els.loadMoreWrap.hidden = visible.length >= total;
+
+    if (total === 0) {
+      els.resultStatus.textContent = "0 resultados";
+      return;
+    }
+
+    const shown = visible.length;
+    els.resultStatus.textContent = shown < total
+      ? `${formatNumber(total)} resultados · mostrando ${formatNumber(shown)}`
+      : `${formatNumber(total)} resultado${total === 1 ? "" : "s"}`;
+
+    if (shown < total) {
+      const remaining = total - shown;
+      els.loadMore.textContent = `Mostrar ${formatNumber(Math.min(PAGE_SIZE, remaining))} más`;
+    }
+  }
+
+  function createRow(row) {
+    const tr = document.createElement("tr");
+
+    const receiverCell = document.createElement("td");
+    const name = document.createElement("p");
+    name.className = "receiver-name";
+    name.textContent = row.nombre || "Sin nombre";
+    receiverCell.appendChild(name);
+
+    if (row.comuna_base) {
+      const base = document.createElement("p");
+      base.className = "cell-secondary";
+      base.textContent = `Comuna base del dataset: ${row.comuna_base}`;
+      receiverCell.appendChild(base);
+    }
+
+    receiverCell.appendChild(createDetails(row));
+
+    const assignmentCell = document.createElement("td");
+    const primary = document.createElement("p");
+    primary.className = "cell-primary";
+    primary.textContent = row.tribunal_fuente || row.territorio || row.corte || "No informado";
+    assignmentCell.appendChild(primary);
+
+    if (row.corte && row.corte !== row.tribunal_fuente) {
+      const court = document.createElement("p");
+      court.className = "cell-secondary";
+      court.textContent = row.corte;
+      assignmentCell.appendChild(court);
+    }
+
+    const contactCell = document.createElement("td");
+    contactCell.appendChild(createContactBlock(row));
+
+    tr.append(receiverCell, assignmentCell, contactCell);
+    return tr;
+  }
+
+  function createContactBlock(row) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "contact-list";
+
+    row.emails.slice(0, 2).forEach(email => {
+      const link = document.createElement("a");
+      link.href = `mailto:${email}`;
+      link.textContent = email;
+      wrapper.appendChild(link);
+    });
+
+    const mobile = row.telefono_normalizado || row.telefono || "";
+    const fixed = row.telefono_fijo || "";
+
+    if (mobile) {
+      const tel = document.createElement("a");
+      tel.href = `tel:${digitsForTel(row.telefono || row.telefono_normalizado)}`;
+      tel.textContent = row.telefono_normalizado || formatLoosePhone(row.telefono);
+      wrapper.appendChild(tel);
+    }
+
+    if (fixed) {
+      const fixedLink = document.createElement("a");
+      fixedLink.href = `tel:${digitsForTel(fixed)}`;
+      fixedLink.textContent = `Fijo ${formatLoosePhone(fixed)}`;
+      wrapper.appendChild(fixedLink);
+    }
+
+    if (!row.emails.length && !mobile && !fixed) {
+      const missing = document.createElement("span");
+      missing.className = "cell-secondary";
+      missing.textContent = "Sin contacto informado";
+      wrapper.appendChild(missing);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "contact-actions";
+
+    if (row.telefono_valido_whatsapp && row.telefono_whatsapp_normalizado) {
+      const wa = document.createElement("a");
+      wa.href = `https://wa.me/${row.telefono_whatsapp_normalizado}`;
+      wa.target = "_blank";
+      wa.rel = "noopener noreferrer";
+      wa.textContent = "WhatsApp ↗";
+      actions.appendChild(wa);
+    }
+
+    if (row.emails[0]) {
+      const mail = document.createElement("a");
+      mail.href = `mailto:${row.emails[0]}`;
+      mail.textContent = "Correo";
+      actions.appendChild(mail);
+    }
+
+    if (actions.childNodes.length) wrapper.appendChild(actions);
+    return wrapper;
+  }
+
+  function createDetails(row) {
+    const details = document.createElement("details");
+    details.className = "row-details";
+
+    const summary = document.createElement("summary");
+    const communeCount = row.comunas_cubiertas.length;
+    const tribunalCount = row.tribunales_relacionados.length;
+    const parts = [];
+    if (communeCount) parts.push(`${communeCount} comuna${communeCount === 1 ? "" : "s"}`);
+    if (tribunalCount) parts.push(`${tribunalCount} tribunal${tribunalCount === 1 ? "" : "es"}`);
+    summary.textContent = parts.length ? `Cobertura y fuente · ${parts.join(" · ")}` : "Cobertura y fuente";
+    details.appendChild(summary);
+
+    const content = document.createElement("div");
+    content.className = "details-content";
+
+    if (row.comunas_cubiertas.length) {
+      const p = document.createElement("p");
+      const strong = document.createElement("strong");
+      strong.textContent = "Comunas del dataset: ";
+      p.append(strong, document.createTextNode(row.comunas_cubiertas.join(", ")));
+      content.appendChild(p);
+    }
+
+    if (row.tribunales_relacionados.length) {
+      const p = document.createElement("p");
+      const strong = document.createElement("strong");
+      strong.textContent = "Tribunales relacionados: ";
+      p.append(strong, document.createTextNode(row.tribunales_relacionados.join(", ")));
+      content.appendChild(p);
+    }
+
+    if (row.fuente || row.fecha_fuente) {
+      const p = document.createElement("p");
+      const strong = document.createElement("strong");
+      strong.textContent = "Fuente: ";
+      p.append(strong, document.createTextNode([row.fuente, row.fecha_fuente].filter(Boolean).join(" · ")));
+      content.appendChild(p);
+    }
+
+    if (row.notas) {
+      const p = document.createElement("p");
+      const strong = document.createElement("strong");
+      strong.textContent = "Nota metodológica: ";
+      p.append(strong, document.createTextNode(row.notas));
+      content.appendChild(p);
+    }
+
+    details.appendChild(content);
+    return details;
+  }
+
+  function hasAnyPhone(row) {
+    return Boolean(row.telefono || row.telefono_normalizado || row.telefono_fijo);
+  }
+
+  function compareRows(a, b) {
+    return String(a.nombre || "").localeCompare(String(b.nombre || ""), "es", { sensitivity: "base" });
+  }
+
+  function uniqueSorted(values) {
+    return [...new Set(values.filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), "es", { sensitivity: "base" }));
+  }
+
+  function normalizeText(value = "") {
+    return String(value)
+      .toLowerCase()
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .replace(/[^a-z0-9ñ\s@.+-]/gi, " ")
+      .replace(/[^a-z0-9ñ]+/g, " ")
       .replace(/\s+/g, " ")
       .trim();
   }
 
-  function formatPhone(value) {
-    const raw = String(value || "").trim();
-    const digits = raw.replace(/\D/g, "");
-    if (!digits) return raw;
-    if (digits.length === 8) return `+56 2 ${digits.slice(0, 4)} ${digits.slice(4)}`;
-    if (digits.length === 9) return `+56 ${digits.slice(0, 1)} ${digits.slice(1, 5)} ${digits.slice(5)}`;
-    if (digits.length === 11 && digits.startsWith("56")) return `+${digits.slice(0, 2)} ${digits.slice(2, 3)} ${digits.slice(3, 7)} ${digits.slice(7)}`;
-    return raw;
-  }
-
-  function getPrimaryEmail(row) {
-    return getUniqueEmails(row)[0] || "";
-  }
-
-  function getReceiverWhatsAppNumber(row) {
-    const raw = cleanValue(row.Telefono_Celular);
-    if (!raw) return "";
-
-    const digits = raw.replace(/\D/g, "");
+  function digitsForTel(value = "") {
+    const digits = String(value).replace(/\D+/g, "");
     if (!digits) return "";
-
-    if (digits.length === 11 && digits.startsWith("56") && digits[2] === "9") return digits;
-    if (digits.length === 9 && digits.startsWith("9")) return `56${digits}`;
-    if (digits.length === 8) return ""; // probablemente teléfono fijo; mejor no abrir WhatsApp.
-    return "";
+    if (digits.startsWith("56")) return `+${digits}`;
+    if (digits.length === 9) return `+56${digits}`;
+    if (digits.length === 8) return `+56${digits}`;
+    return digits;
   }
 
-
-  function buildReceiverEmailHref(row, email) {
-    const subject = `Consulta diligencia - ${row.Nombre || "Receptor judicial"}`;
-    const body = [
-      "Hola, te escribo porque encontré tus datos en Receptores Chile.",
-      "",
-      "Quisiera consultar disponibilidad y valor aproximado para una diligencia.",
-      "",
-      "Datos de referencia:",
-      `- Receptor/a: ${row.Nombre || ""}`,
-      `- Corte: ${row.Corte || ""}`,
-      `- Tribunal: ${row.Tribunal || ""}`,
-      "",
-      "Muchas gracias."
-    ].join("\n");
-
-    return `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  function formatLoosePhone(value = "") {
+    const digits = String(value).replace(/\D+/g, "");
+    if (!digits) return String(value || "");
+    if (digits.length === 9 && digits.startsWith("9")) return `+56 9 ${digits.slice(1, 5)} ${digits.slice(5)}`;
+    if (digits.length === 9 && digits.startsWith("2")) return `+56 ${digits.slice(0, 1)} ${digits.slice(1, 5)} ${digits.slice(5)}`;
+    return String(value);
   }
 
-  function buildReceiverWhatsAppHref(row) {
-    const number = getReceiverWhatsAppNumber(row);
-    if (!number) return "";
-
-    const message = [
-      "Hola, te escribo porque encontré tus datos en Receptores Chile.",
-      "Quisiera consultar disponibilidad para una diligencia."
-    ].join(" ");
-    return `https://wa.me/${number}?text=${encodeURIComponent(message)}`;
+  function formatDate(value) {
+    if (!value) return "";
+    const date = new Date(`${value}T12:00:00`);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return new Intl.DateTimeFormat("es-CL", { day: "numeric", month: "long", year: "numeric" }).format(date);
   }
 
-  function buildCallHref(row) {
-    const phone = row.Telefono_Celular || row.Telefono_Fijo || "";
-    const digits = String(phone).replace(/\D/g, "");
-    if (!digits) return "";
-    const normalized = digits.startsWith("56") ? `+${digits}` : `+56${digits}`;
-    return `tel:${normalized}`;
+  function formatNumber(value) {
+    return new Intl.NumberFormat("es-CL").format(value);
   }
 
-  function buildSiteWhatsAppHref(message) {
-    return `https://wa.me/${CONTACT_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
-  }
-
-  function buildMailto(subject, body = "") {
-    return `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(subject)}${body ? `&body=${body}` : ""}`;
-  }
-
-  function setStatus(message) {
-    els.statusText.textContent = message;
-  }
-
-  function getSessionAdOffset() {
-    const current = Number(sessionStorage.getItem("receptoresChileAdOffset"));
-    if (Number.isFinite(current) && current >= 0) return current;
-    const next = Math.floor(Math.random() * FALLBACK_ADS.length);
-    sessionStorage.setItem("receptoresChileAdOffset", String(next));
-    return next;
-  }
-
-  function withCacheBust(url) {
-    if (url.startsWith("http")) return url;
-    const separator = url.includes("?") ? "&" : "?";
-    return `${url}${separator}v=2026-05-13-email-dedupe`;
-  }
-
-  function debounce(fn, delay = 120) {
-    let timer = 0;
+  function debounce(fn, delay) {
+    let timeout;
     return (...args) => {
-      window.clearTimeout(timer);
-      timer = window.setTimeout(() => fn(...args), delay);
+      clearTimeout(timeout);
+      timeout = setTimeout(() => fn(...args), delay);
     };
-  }
-
-  function parseCSV(text) {
-    const rows = [];
-    let row = [];
-    let cell = "";
-    let inQuotes = false;
-
-    for (let i = 0; i < text.length; i += 1) {
-      const char = text[i];
-      const next = text[i + 1];
-
-      if (char === '"') {
-        if (inQuotes && next === '"') {
-          cell += '"';
-          i += 1;
-        } else {
-          inQuotes = !inQuotes;
-        }
-        continue;
-      }
-
-      if (char === "," && !inQuotes) {
-        row.push(cell);
-        cell = "";
-        continue;
-      }
-
-      if ((char === "\n" || char === "\r") && !inQuotes) {
-        if (char === "\r" && next === "\n") i += 1;
-        row.push(cell);
-        if (row.some(value => value.trim() !== "")) rows.push(row);
-        row = [];
-        cell = "";
-        continue;
-      }
-
-      cell += char;
-    }
-
-    row.push(cell);
-    if (row.some(value => value.trim() !== "")) rows.push(row);
-    if (!rows.length) return [];
-
-    const headers = rows.shift().map(header => header.trim());
-    return rows.map(values => {
-      const object = {};
-      headers.forEach((header, index) => {
-        object[header] = values[index] === undefined ? "" : values[index];
-      });
-      return object;
-    });
   }
 })();
