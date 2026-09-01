@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
@@ -246,6 +246,7 @@ def render_receptor_page(row: dict, slug: str) -> str:
 <p class="meta">Fuente: {esc(row.get("fuente") or "Poder Judicial")} · Actualización: {esc(row.get("fecha_fuente") or "sin fecha informada")}</p>
 </main>
 <footer><div class="shell"><span>Receptores Chile</span><a href="/">Volver al buscador</a></div></footer>
+<!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{{"token":"47df7ee006864c7cb89ac9a9ec036ba4"}}'></script><!-- End Cloudflare Web Analytics -->
 </body></html>'''
 
 
@@ -266,7 +267,8 @@ def render_directory(rows_with_slugs) -> str:
 </style></head><body>
 <header><div class="shell header-inner"><a class="brand" href="/">Receptores Chile</a><a class="back" href="/">Buscador</a></div></header>
 <main class="shell"><p class="eyebrow">Directorio alfabético</p><h1>Receptores judiciales en Chile</h1><p class="lead">{len(rows_with_slugs)} receptores. Selecciona un nombre para ver su ficha pública.</p><ul class="directory">{''.join(items)}</ul></main>
-<footer><div class="shell"><span>Receptores Chile</span><a href="/">Volver al buscador</a></div></footer></body></html>'''
+<footer><div class="shell"><span>Receptores Chile</span><a href="/">Volver al buscador</a></div></footer><!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{{"token":"47df7ee006864c7cb89ac9a9ec036ba4"}}'></script><!-- End Cloudflare Web Analytics -->
+</body></html>'''
 
 
 def write_sitemap(rows_with_slugs, today: str):
@@ -322,3 +324,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
