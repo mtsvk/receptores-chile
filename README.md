@@ -55,6 +55,32 @@ Las evaluaciones no requieren cuenta. La IP no se almacena en claro; los comenta
 
 No conviene abrir `index.html` directamente con `file://`, porque algunos navegadores bloquean `fetch()` de archivos JSON locales.
 
+## Worker y D1
+
+El Worker forma parte de este mismo repositorio, pero mantiene su propio proyecto Node/Wrangler dentro de `worker/`.
+
+Frontend:
+
+```powershell
+cd C:\Workspace\projects\receptores-chile
+python -m http.server 8000
+```
+
+Worker:
+
+```powershell
+cd C:\Workspace\projects\receptores-chile\worker
+npm install
+npm test
+npx wrangler deploy
+npx wrangler d1 migrations list receptores-analytics-db --remote
+npx wrangler secret list
+```
+
+La configuración de `worker/wrangler.jsonc` sigue apuntando al Worker remoto `receptores-analytics` y a la base D1 existente `receptores-analytics-db`, mediante el binding `receptores_analytics_db` y su `database_id` existente. Esta consolidación no recrea ni renombra recursos remotos. Los secrets `TURNSTILE_SECRET_KEY` y `VOTE_HMAC_SECRET` permanecen gestionados por Cloudflare y nunca deben guardarse en el repositorio.
+
+`worker/migrations/0001_ratings.sql` es la migración versionada para ratings y debe aplicarse solo cuando corresponda; no se vuelve a aplicar durante esta consolidación. `worker/schema.sql` conserva el esquema base histórico de `events` como referencia/auxiliar: no reemplaza el historial de migraciones remotas ni debe ejecutarse automáticamente sobre la base existente.
+
 ## Publicación
 
 El proyecto sigue siendo apto para GitHub Pages. Reemplaza los archivos de la rama publicada por esta versión y GitHub Pages servirá `index.html` sin proceso de build.
