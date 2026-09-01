@@ -47,6 +47,12 @@ python -m http.server 8000
 
 Luego abre `http://localhost:8000`.
 
+## Evaluaciones V5
+
+El sitio carga `ratings.js` y consulta el Worker compartido en lotes. Configura `window.RECEPTORES_TURNSTILE_SITE_KEY` en `index.html` y en `tools/generate_seo_pages.py`; usa las claves oficiales de prueba de Turnstile durante desarrollo. El enlace `/ranking/` sólo muestra receptores con al menos 5 evaluaciones y usa el score Wilson calculado por el Worker. `?debug=ratings` activa logs temporales de batches, votos, Turnstile y errores.
+
+Las evaluaciones no requieren cuenta. La IP no se almacena en claro; los comentarios son privados y no aparecen en el sitio, sitemap, JSON-LD, analytics ni endpoints públicos.
+
 No conviene abrir `index.html` directamente con `file://`, porque algunos navegadores bloquean `fetch()` de archivos JSON locales.
 
 ## Publicación

@@ -224,6 +224,7 @@ function card(r) {
     a.appendChild(p);
   }
   a.appendChild(details(r));
+  if (r.id && window.ReceptoresRatings) a.appendChild(window.ReceptoresRatings.widget(r.id));
 
   const b = document.createElement("div");
   const tribunal = document.createElement("p");

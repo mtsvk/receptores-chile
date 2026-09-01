@@ -13,6 +13,7 @@ from urllib.parse import quote
 ROOT = Path(__file__).resolve().parents[1]
 DATA_FILE = ROOT / "data" / "receptores.json"
 OUT_DIR = ROOT / "receptores"
+RANKING_DIR = ROOT / "ranking"
 SITEMAP_FILE = ROOT / "sitemap.xml"
 BASE_URL = "https://receptores.vukusic.cl"
 SITE_NAME = "Receptores Chile"
@@ -173,6 +174,14 @@ def render_list(values, empty_text="No informado."):
     return "<p>" + esc(", ".join(values)) + "</p>"
 
 
+def render_rating_widget(receptor_id: str) -> str:
+    return f'''<section class="rating-widget" data-receptor-id="{esc(receptor_id)}" aria-label="Calidad del servicio"><div class="rating-title">Calidad del servicio</div><div class="rating-summary">Cargando evaluaciones…</div><div class="rating-actions"><button type="button" data-vote="1" aria-label="Evaluar positivamente" aria-pressed="false">Positiva</button><button type="button" data-vote="-1" aria-label="Evaluar negativamente" aria-pressed="false">Negativa</button></div><p class="rating-note">Las evaluaciones son anónimas. Los comentarios no se publican automáticamente.</p><form class="rating-details" hidden><fieldset><legend>¿Qué influyó en tu evaluación?</legend><label><input type="checkbox" name="reason" value="rapidez"> Rapidez</label><label><input type="checkbox" name="reason" value="comunicacion"> Comunicación</label><label><input type="checkbox" name="reason" value="disponibilidad"> Disponibilidad</label><label><input type="checkbox" name="reason" value="cumplimiento"> Cumplimiento</label><label><input type="checkbox" name="reason" value="trato"> Trato</label><label><input type="checkbox" name="reason" value="honorarios"> Honorarios</label></fieldset><label class="rating-comment">Comentario opcional<textarea name="comment" maxlength="300" rows="3"></textarea></label><div class="turnstile-slot"></div><button type="submit">Guardar detalles</button><span class="rating-message" role="status"></span></form></section>'''
+
+
+def render_rating_scripts() -> str:
+    return '''<link rel="stylesheet" href="/ratings.css?v=20260901-1"><script>window.RECEPTORES_TURNSTILE_SITE_KEY = "0x4AAAAAAEkQy8FIbatMffjR";</script><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" defer></script><script src="/ratings.js?v=20260901-1" defer></script>'''
+
+
 PAGE_CSS = """
 :root{color-scheme:light;--ink:#111;--muted:#666;--line:#ddd;--surface:#f7f7f7;--max:880px}
 *{box-sizing:border-box}html{font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--ink);background:#fff}
@@ -235,6 +244,7 @@ def render_receptor_page(row: dict, slug: str) -> str:
 <p class="eyebrow">Receptor judicial · directorio no oficial</p>
 <h1>{esc(name)}</h1>
 <p class="lead">{esc(adscripcion)}</p>
+{render_rating_widget(str(row.get("id") or ""))}
 <div class="grid">
 <section class="section"><h2>Corte</h2><p>{esc(corte or "No informada")}</p></section>
 <section class="section"><h2>Tribunal / adscripción</h2><p>{esc(tribunal or "No informado")}</p></section>
@@ -248,7 +258,7 @@ def render_receptor_page(row: dict, slug: str) -> str:
 </main>
 <footer><div class="shell"><span>Receptores Chile</span><a href="/">Volver al buscador</a></div></footer>
 <!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{{"token":"47df7ee006864c7cb89ac9a9ec036ba4"}}'></script><!-- End Cloudflare Web Analytics -->
-<script defer src="/analytics.js?v=20260901-3"></script></body></html>'''
+<script defer src="/analytics.js?v=20260901-3"></script>{render_rating_scripts()}</body></html>'''
 
 
 def render_directory(rows_with_slugs) -> str:
@@ -272,8 +282,12 @@ def render_directory(rows_with_slugs) -> str:
 <script defer src="/analytics.js?v=20260901-3"></script></body></html>'''
 
 
+def render_ranking_page() -> str:
+    return f'''<!doctype html><html lang="es-CL"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ranking de receptores judiciales | {SITE_NAME}</title><meta name="description" content="Ranking público de calidad de receptores judiciales en Chile según evaluaciones anónimas."><meta name="robots" content="index,follow"><link rel="canonical" href="{BASE_URL}/ranking/"><style>{PAGE_CSS}.ranking{{list-style:none;padding:0;margin:26px 0;border-top:1px solid var(--line)}}.ranking li{{display:grid;grid-template-columns:2fr 1fr .7fr .7fr;gap:14px;padding:14px 0;border-bottom:1px solid var(--line);align-items:baseline}}.ranking small{{color:var(--muted)}}.ranking-error{{color:var(--muted)}}@media(max-width:650px){{.ranking li{{grid-template-columns:1fr 1fr}}}}</style></head><body><header><div class="shell header-inner"><a class="brand" href="/">Receptores Chile</a><a class="back" href="/">Buscador</a></div></header><main class="shell"><p class="eyebrow">Evaluaciones anónimas</p><h1>Ranking de calidad</h1><p class="lead">El orden pondera tanto la proporción de evaluaciones positivas como el tamaño de la muestra.</p><ul id="ranking" class="ranking"><li>Cargando ranking…</li></ul></main><footer><div class="shell"><span>Receptores Chile</span><a href="/">Volver al buscador</a></div></footer><script>window.RECEPTORES_TURNSTILE_SITE_KEY="0x4AAAAAAEkQy8FIbatMffjR";</script><script>const API="https://receptores-analytics.adminbase100.workers.dev";fetch("/data/receptores.json").then(r=>r.json()).then(rows=>fetch(API+"/ratings/top?limit=100").then(r=>r.json()).then(data=>{{const byId=new Map(rows.map(r=>[r.id,r]));const el=document.getElementById("ranking");el.replaceChildren(...(data.ratings||[]).map(item=>{{const r=byId.get(item.receptor_id)||{{}};const li=document.createElement("li");li.innerHTML=`<span><a href="/receptores/${{String(r.id||item.receptor_id).replace(/^rec-\\d+-/,"")}}.html">${{r.nombre||item.receptor_id}}</a></span><small>${{r.corte||r.tribunal_fuente||"Adscripción no informada"}}</small><span>${{item.positive_pct}}% positivas</span><span>${{item.total}} evaluaciones</span>`;return li}}));if(!data.ratings?.length)el.innerHTML="Aún no hay receptores con 5 evaluaciones."}})).catch(()=>document.getElementById("ranking").innerHTML="No fue posible cargar el ranking.");</script></body></html>'''
+
+
 def write_sitemap(rows_with_slugs, today: str):
-    urls = [(f"{BASE_URL}/", today), (f"{BASE_URL}/receptores/", today)]
+    urls = [(f"{BASE_URL}/", today), (f"{BASE_URL}/receptores/", today), (f"{BASE_URL}/ranking/", today)]
     urls.extend((f"{BASE_URL}/receptores/{slug}.html", today) for _, slug in rows_with_slugs)
     body = ['<?xml version="1.0" encoding="UTF-8"?>', '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
     for url, lastmod in urls:
@@ -306,6 +320,8 @@ def main():
     for row, slug in rows_with_slugs:
         (OUT_DIR / f"{slug}.html").write_text(render_receptor_page(row, slug), encoding="utf-8")
     (OUT_DIR / "index.html").write_text(render_directory(rows_with_slugs), encoding="utf-8")
+    RANKING_DIR.mkdir(parents=True, exist_ok=True)
+    (RANKING_DIR / "index.html").write_text(render_ranking_page(), encoding="utf-8")
 
     today = dt.date.today().isoformat()
     sitemap_count = write_sitemap(rows_with_slugs, today)
@@ -325,6 +341,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
