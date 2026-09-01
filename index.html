@@ -3,48 +3,97 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#ffffff">
-<meta name="description" content="Buscador no oficial de receptores judiciales en Chile por nombre, comuna, tribunal, Corte y datos de contacto.">
-<title>Receptores Chile · Buscador judicial</title>
-<link rel="stylesheet" href="styles.css?v=20260901-v3">
+<meta name="theme-color" content="#f6f6f3">
+<meta name="description" content="Buscador no oficial de receptores judiciales en Chile.">
+<title>Receptores Chile</title>
+<link rel="stylesheet" href="app-v4.css?v=20260901-1">
 </head>
 <body>
-<a class="skip-link" href="#buscador">Ir al buscador</a>
-<header class="site-header"><div class="shell header-inner"><a class="brand" href="#">Receptores Chile</a><span class="header-source">Directorio no oficial · fuente Poder Judicial</span></div></header>
+<a class="skip" href="#buscar">Ir al buscador</a>
+
+<header class="topbar">
+  <div class="shell topbar-inner">
+    <a class="brand" href="./">Receptores Chile</a>
+    <span class="topmeta">Directorio no oficial · fuente Poder Judicial</span>
+  </div>
+</header>
+
 <main class="shell">
-  <section class="hero" aria-labelledby="page-title">
-    <h1 id="page-title">Receptores judiciales</h1>
-    <p class="hero-copy">Busca por nombre, comuna, tribunal o Corte. Los datos de contacto se muestran tal como pueden verificarse sin reconstruir números dudosos.</p>
-    <p class="dataset-line" id="datasetLine">Cargando datos…</p>
-  </section>
-
-  <section class="search-section" id="buscador" aria-label="Buscador de receptores">
-    <label class="visually-hidden" for="searchInput">Buscar receptor</label>
-    <div class="search-input-wrap">
-      <input id="searchInput" type="search" inputmode="search" autocomplete="off" placeholder="Nombre, comuna o tribunal…" aria-describedby="searchHelp">
-      <button id="clearSearch" class="clear-search" type="button" aria-label="Limpiar búsqueda" hidden>Limpiar</button>
+  <section class="intro">
+    <div>
+      <h1>Receptores judiciales</h1>
+      <p>Busca por receptor, tribunal, comuna, Corte, correo o teléfono.</p>
     </div>
-    <p class="field-help" id="searchHelp">También puedes buscar por correo o teléfono. No distingue mayúsculas ni tildes.</p>
-    <div class="filters" aria-label="Filtros">
-      <label><span>Corte</span><select id="filterCorte"><option value="">Todas</option></select></label>
-      <label><span>Comuna</span><select id="filterComuna"><option value="">Todas</option></select></label>
-      <label><span>Contacto</span><select id="filterContacto"><option value="">Cualquier dato</option><option value="email">Con correo</option><option value="phone">Con teléfono</option><option value="whatsapp">WhatsApp disponible</option></select></label>
-      <button id="resetFilters" class="reset-button" type="button">Limpiar filtros</button>
+    <div class="dataset" id="dataset">Cargando directorio…</div>
+  </section>
+
+  <section class="searchbox" id="buscar" aria-label="Buscador">
+    <div class="searchrow">
+      <label class="sr-only" for="q">Buscar</label>
+      <input id="q" type="search" autocomplete="off" placeholder="Nombre, comuna, tribunal, correo o teléfono">
+      <button id="clear" class="clearbtn" type="button" hidden>Limpiar</button>
+    </div>
+
+    <div class="filters">
+      <div class="filter">
+        <label for="corte">Corte</label>
+        <select id="corte"><option value="">Todas las Cortes</option></select>
+      </div>
+      <div class="filter">
+        <label for="comuna">Comuna</label>
+        <select id="comuna"><option value="">Todas las comunas</option></select>
+      </div>
+      <div class="filter">
+        <label for="contacto">Contacto</label>
+        <select id="contacto">
+          <option value="">Cualquier dato</option>
+          <option value="email">Con correo</option>
+          <option value="phone">Con teléfono</option>
+          <option value="whatsapp">Con WhatsApp</option>
+        </select>
+      </div>
+      <button id="reset" class="reset" type="button">Restablecer</button>
     </div>
   </section>
 
-  <section class="results-section" aria-label="Resultados">
-    <div class="results-head"><p id="resultStatus" role="status" aria-live="polite">Cargando…</p><p class="result-hint">Los resultados más directos aparecen primero.</p></div>
-    <p class="coverage-notice" id="coverageNotice" hidden>Algunos resultados usan cobertura territorial estimada a partir de la adscripción informada. Verifica la competencia antes de encargar una diligencia.</p>
-    <div class="table-wrap" id="tableWrap" hidden><table><thead><tr><th scope="col">Receptor</th><th scope="col">Adscripción</th><th scope="col">Contacto</th></tr></thead><tbody id="resultsBody"></tbody></table></div>
-    <div class="empty-state" id="emptyState" hidden><strong>Sin resultados</strong><p>Prueba con otro apellido, comuna, tribunal o Corte.</p></div>
-    <div class="load-more-wrap" id="loadMoreWrap" hidden><button id="loadMore" class="secondary-button" type="button">Mostrar más</button></div>
+  <section class="results" aria-label="Resultados">
+    <div class="results-head">
+      <h2 id="status" role="status" aria-live="polite">Cargando…</h2>
+      <p>Orden alfabético · datos procesados localmente</p>
+    </div>
+
+    <p id="notice" class="notice" hidden>
+      La cobertura territorial de algunos registros se deriva de la adscripción informada. Verifica competencia antes de diligenciar.
+    </p>
+
+    <div id="error" class="error" hidden></div>
+    <div id="list" class="list"></div>
+
+    <div id="empty" class="empty" hidden>No encontramos receptores con esos criterios.</div>
+
+    <div id="moreWrap" class="loadmore" hidden>
+      <button id="more" type="button">Mostrar más</button>
+    </div>
   </section>
 
-  <section class="methodology" aria-label="Fuente y metodología"><details><summary>Fuente, cobertura y tratamiento de teléfonos</summary><div class="methodology-content"><p id="sourceText">Fuente principal: Poder Judicial — Transparencia — Receptores Judiciales.</p><p>Este directorio no es oficial. Los valores publicados por el Poder Judicial se conservan; los números de ocho dígitos aislados no se completan automáticamente y se muestran sin enlace de llamada.</p><p>La cobertura territorial puede ser directa o derivada de la adscripción/jurisdicción. Cuando corresponde, se identifica como estimada. Verifica los datos y la competencia antes de encargar una diligencia.</p></div></details></section>
+  <section class="method">
+    <details>
+      <summary>Fuente y metodología</summary>
+      <p>Directorio no oficial construido desde la publicación de receptores judiciales del Poder Judicial. Los teléfonos chilenos de ocho dígitos se interpretan como móviles y se completan con +56 9. La cobertura territorial puede incluir inferencias desde la adscripción o jurisdicción informada.</p>
+    </details>
+  </section>
 </main>
-<footer class="site-footer"><div class="shell footer-inner"><p><strong>Receptores Chile</strong> · sitio estático, sin backend ni tracking.</p><nav aria-label="Enlaces del sitio"><a href="mailto:mtsvw1@gmail.com?subject=Correcci%C3%B3n%20Receptores%20Chile">Reportar error</a><a href="https://github.com/mtsvk/receptores-chile" target="_blank" rel="noopener noreferrer">GitHub ↗</a></nav><p class="footer-meta" id="footerMeta"></p></div></footer>
 
-<script src="script.js?v=20260901-v3" defer></script>
+<footer class="footer">
+  <div class="shell footer-inner">
+    <span>Receptores Chile · sin tracking</span>
+    <nav>
+      <a href="mailto:mtsvw1@gmail.com?subject=Correcci%C3%B3n%20Receptores%20Chile">Reportar error</a>
+      <a href="https://github.com/mtsvk/receptores-chile" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
+    </nav>
+  </div>
+</footer>
+
+<script src="app-v4.js?v=20260901-1" defer></script>
 </body>
 </html>
