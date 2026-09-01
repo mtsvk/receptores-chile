@@ -219,6 +219,7 @@ def render_receptor_page(row: dict, slug: str) -> str:
 <meta name="description" content="{esc(description)}">
 <meta name="robots" content="index,follow">
 <link rel="canonical" href="{esc(canonical)}">
+<meta name="receptor-id" content="{esc(row.get('id'))}">
 <meta property="og:type" content="profile">
 <meta property="og:title" content="{esc(title)}">
 <meta property="og:description" content="{esc(description)}">
@@ -247,7 +248,7 @@ def render_receptor_page(row: dict, slug: str) -> str:
 </main>
 <footer><div class="shell"><span>Receptores Chile</span><a href="/">Volver al buscador</a></div></footer>
 <!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{{"token":"47df7ee006864c7cb89ac9a9ec036ba4"}}'></script><!-- End Cloudflare Web Analytics -->
-</body></html>'''
+<script defer src="/analytics.js?v=20260901-3"></script></body></html>'''
 
 
 def render_directory(rows_with_slugs) -> str:
@@ -268,7 +269,7 @@ def render_directory(rows_with_slugs) -> str:
 <header><div class="shell header-inner"><a class="brand" href="/">Receptores Chile</a><a class="back" href="/">Buscador</a></div></header>
 <main class="shell"><p class="eyebrow">Directorio alfabético</p><h1>Receptores judiciales en Chile</h1><p class="lead">{len(rows_with_slugs)} receptores. Selecciona un nombre para ver su ficha pública.</p><ul class="directory">{''.join(items)}</ul></main>
 <footer><div class="shell"><span>Receptores Chile</span><a href="/">Volver al buscador</a></div></footer><!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{{"token":"47df7ee006864c7cb89ac9a9ec036ba4"}}'></script><!-- End Cloudflare Web Analytics -->
-</body></html>'''
+<script defer src="/analytics.js?v=20260901-3"></script></body></html>'''
 
 
 def write_sitemap(rows_with_slugs, today: str):
@@ -324,4 +325,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
 
