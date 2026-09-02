@@ -294,7 +294,7 @@ function card(r) {
   actions.className = "actions";
   if (wa) {
     const link = document.createElement("a");
-    link.className = "action-button";
+    link.className = "contact-link";
     link.href = `https://wa.me/56${wa.digits}`;
     link.target = "_blank";
     link.rel = "noopener noreferrer";
@@ -310,14 +310,14 @@ function card(r) {
     actions.appendChild(contactButton);
 
     const detailLink = document.createElement("a");
-    detailLink.className = "action-button action-secondary";
+    detailLink.className = "action-link";
     detailLink.href = canonicalUrl(r);
     detailLink.textContent = "Ver ficha";
     actions.appendChild(detailLink);
 
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "action-button";
+    button.className = "action-link";
     button.textContent = "Copiar enlace";
     button.addEventListener("click", () => copyLink(button, canonicalUrl(r)));
     actions.appendChild(button);
