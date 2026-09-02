@@ -2,15 +2,15 @@
 
 Este proyecto está consolidado dentro de `receptores-chile/worker`. Ejecuta los comandos desde esta carpeta. El nombre del Worker, el binding D1, la base y el `database_id` de `wrangler.jsonc` son los recursos remotos existentes y no deben cambiarse.
 
-Worker y D1 compartidos para analytics existentes y evaluaciones anónimas.
+Worker y D1 compartidos para analytics existentes, recomendaciones anónimas y comentarios privados.
 
 ## Arquitectura
 
-`POST /event` conserva los eventos `search`, `receptor_open` y `contact_click`. V5 agrega `POST /vote`, `GET /ratings?ids=...`, `GET /ratings/top?limit=100` y `GET /ratings/{receptor_id}/reasons`. El sitio mantiene el dataset estático; los nombres del ranking se resuelven en el navegador desde `data/receptores.json`.
+`POST /event` conserva los eventos `search`, `receptor_open` y `contact_click`. El Worker expone `POST /vote` (sólo recomendación `vote=1`), `POST /feedback`, `GET /ratings?ids=...` y `GET /ratings/top?limit=100`. Los endpoints públicos sólo devuelven cantidades de recomendaciones. El sitio mantiene el dataset estático; los nombres del ranking se resuelven en el navegador desde `data/receptores.json`.
 
 ## D1 y migración
 
-`migrations/0001_ratings.sql` crea `votes`, `vote_details` y `vote_rate_limits`. La clave primaria `(receptor_id, voter_key)` hace idempotentes los cambios de voto y detalles. Los comentarios nacen con estado `private` y no son devueltos por ningún endpoint público.
+`migrations/0001_ratings.sql` conserva `votes` y `vote_details` históricos. `migrations/0002_private_feedback.sql` crea `private_feedback`, independiente de `votes`, para que un comentario no requiera recomendación. Las recomendaciones nuevas usan sólo `vote=1`; los negativos históricos se ignoran en todos los agregados públicos. La clave primaria `(receptor_id, voter_key)` hace idempotentes recomendaciones y comentarios.
 
 Aplicar localmente:
 
@@ -59,4 +59,4 @@ Abrir el sitio con `python -m http.server 8000`. Usar `?debug=ratings` para ver 
 npx wrangler d1 execute receptores-analytics-db --local --command "SELECT receptor_id, vote, moderation_status FROM votes JOIN vote_details USING (receptor_id, voter_key) LIMIT 20"
 ```
 
-La prueba manual debe votar sin detalles, repetir con motivos/comentario, cambiar el voto y actualizar detalles: siempre debe existir una sola fila por `(receptor_id, voter_key)`. Verificar rechazos para comentario sobre 300 caracteres, motivo desconocido, voto distinto de `1/-1`, Turnstile inválido y respuestas `429` después de 20 acciones por hora. `/ratings/top` sólo incluye totales de al menos 5 y ordena por Wilson 95%; ninguna lectura pública incluye comentario, motivos individuales, IP, browser ID o voter key.
+La prueba manual debe recomendar, repetir la recomendación, enviar un comentario privado sin recomendar y verificar que el ranking no cambia por el comentario. Verificar rechazos para comentario sobre 300 caracteres, motivo desconocido, `vote=-1`, Turnstile inválido y respuestas `429` después de 20 acciones por hora. `/ratings/top` sólo incluye receptores con al menos 5 recomendaciones y ordena por cantidad; ninguna lectura pública incluye comentario, motivos, IP, browser ID o voter key. Los datos negativos de prueba existentes en Abarca deben limpiarse posteriormente con un procedimiento autorizado; este cambio no los borra.

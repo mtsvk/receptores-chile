@@ -47,11 +47,11 @@ python -m http.server 8000
 
 Luego abre `http://localhost:8000`.
 
-## Evaluaciones V5
+## Recomendaciones y comentarios privados
 
-El sitio carga `ratings.js` y consulta el Worker compartido en lotes. Configura `window.RECEPTORES_TURNSTILE_SITE_KEY` en `index.html` y en `tools/generate_seo_pages.py`; usa las claves oficiales de prueba de Turnstile durante desarrollo. El enlace `/ranking/` sólo muestra receptores con al menos 5 evaluaciones y usa el score Wilson calculado por el Worker. `?debug=ratings` activa logs temporales de batches, votos, Turnstile y errores.
+El sitio carga `ratings.js` y consulta el Worker compartido en lotes. Configura `window.RECEPTORES_TURNSTILE_SITE_KEY` en `index.html` y en `tools/generate_seo_pages.py`; usa las claves oficiales de prueba de Turnstile durante desarrollo. Cada navegador puede recomendar una vez por receptor; los comentarios privados se envían por separado con razones estructuradas. El enlace `/ranking/` sólo muestra receptores con al menos 5 recomendaciones y ordena principalmente por cantidad de recomendaciones. `?debug=ratings` activa logs temporales de batches, recomendaciones, Turnstile y errores.
 
-Las evaluaciones no requieren cuenta. La IP no se almacena en claro; los comentarios son privados y no aparecen en el sitio, sitemap, JSON-LD, analytics ni endpoints públicos.
+Las recomendaciones no requieren cuenta. La IP sólo se usa para rate limiting y no se almacena en claro; el `browser_id` sólo se transforma mediante HMAC. Los comentarios privados no aparecen en el sitio, sitemap, JSON-LD, analytics ni endpoints públicos.
 
 No conviene abrir `index.html` directamente con `file://`, porque algunos navegadores bloquean `fetch()` de archivos JSON locales.
 
