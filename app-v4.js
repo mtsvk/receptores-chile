@@ -302,19 +302,25 @@ function card(r) {
     actions.appendChild(link);
   }
   if (r.id) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "action-button";
-    button.textContent = "Copiar enlace";
-    button.addEventListener("click", () => copyLink(button, canonicalUrl(r)));
-    actions.appendChild(button);
-
     const contactButton = document.createElement("button");
     contactButton.type = "button";
     contactButton.className = "action-button";
     contactButton.textContent = "Guardar contacto";
     contactButton.addEventListener("click", () => downloadVCard(r));
     actions.appendChild(contactButton);
+
+    const detailLink = document.createElement("a");
+    detailLink.className = "action-button action-secondary";
+    detailLink.href = canonicalUrl(r);
+    detailLink.textContent = "Ver ficha";
+    actions.appendChild(detailLink);
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "action-button";
+    button.textContent = "Copiar enlace";
+    button.addEventListener("click", () => copyLink(button, canonicalUrl(r)));
+    actions.appendChild(button);
   }
   if (actions.childNodes.length) c.appendChild(actions);
 
