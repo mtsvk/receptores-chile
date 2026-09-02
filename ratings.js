@@ -1,7 +1,7 @@
 (() => {
   "use strict";
   const API = "https://receptores-analytics.adminbase100.workers.dev";
-  const GOOGLE_CLIENT_ID = window.RECEPTORES_GOOGLE_CLIENT_ID || "";
+  const GOOGLE_CLIENT_ID = window.RECEPTORES_GOOGLE_CLIENT_ID || "853243855913-ibvlhhro10h4hpabjomd4vomt5m490lt.apps.googleusercontent.com";
   const REASONS = ["rapidez", "comunicacion", "disponibilidad", "cumplimiento", "trato", "honorarios"];
   const LABELS = { rapidez: "Rapidez", comunicacion: "Comunicación", disponibilidad: "Disponibilidad", cumplimiento: "Cumplimiento", trato: "Trato", honorarios: "Honorarios" };
   const DEBUG = new URLSearchParams(location.search).get("debug") === "ratings";
