@@ -50,13 +50,15 @@ async function handleVote(request, env, origin) {
   const existing = await env.receptores_analytics_db.prepare("SELECT vote FROM votes WHERE receptor_id = ? AND voter_key = ?").bind(receptorId, key).first();
   if (existing) {
     await env.receptores_analytics_db.prepare("UPDATE votes SET vote = 1, updated_at = datetime('now') WHERE receptor_id = ? AND voter_key = ?").bind(receptorId, key).run();
-    return json({ ok: true, receptor_id: receptorId, ...(await ratingFor(env.receptores_analytics_db, receptorId)), recommended: true }, 200, origin);
+    return json({ ok: true, receptor_id: receptorId, ...(await ratingFor(env.receptores_analytics_db, receptorId)), recommended: true, recommendations_remaining_today: await recommendationRemaining(env.receptores_analytics_db, request, env.VOTE_HMAC_SECRET || "") }, 200, origin);
   }
   const limit = await enforceRecommendationLimit(env.receptores_analytics_db, request, env.VOTE_HMAC_SECRET || ""); if (!limit.ok) return json({ ok: false, error: "daily_recommendation_limit", limit: 5 }, 429, origin);
   await env.receptores_analytics_db.prepare("INSERT INTO votes (receptor_id, voter_key, vote, created_at, updated_at) VALUES (?, ?, 1, datetime('now'), datetime('now')) ON CONFLICT(receptor_id, voter_key) DO UPDATE SET vote = 1, updated_at = datetime('now')").bind(receptorId, key).run();
-  return json({ ok: true, receptor_id: receptorId, ...(await ratingFor(env.receptores_analytics_db, receptorId)), recommended: true }, 200, origin);
+  return json({ ok: true, receptor_id: receptorId, ...(await ratingFor(env.receptores_analytics_db, receptorId)), recommended: true, recommendations_remaining_today: limit.remaining }, 200, origin);
 }
-async function enforceRecommendationLimit(db, request, secret) { const bucketKey = await hmac(secret, `recommendation/day/IP-hash/${chileDateKey()}\n${ipOf(request)}`); const result = await db.prepare("INSERT INTO vote_rate_limits (bucket_key, period, count, updated_at) VALUES (?, 'day', 1, datetime('now')) ON CONFLICT(bucket_key) DO UPDATE SET count = count + 1, updated_at = datetime('now') WHERE count < 5").bind(bucketKey).run(); return { ok: Number(result.meta?.changes || 0) === 1 }; }
+async function recommendationBucketKey(request, secret) { return hmac(secret, `recommendation/day/IP-hash/${chileDateKey()}\n${ipOf(request)}`); }
+async function recommendationRemaining(db, request, secret) { const bucketKey = await recommendationBucketKey(request, secret); const row = await db.prepare("SELECT count FROM vote_rate_limits WHERE bucket_key = ? AND period = 'day'").bind(bucketKey).first(); return Math.max(0, 5 - Number(row?.count || 0)); }
+async function enforceRecommendationLimit(db, request, secret) { const bucketKey = await recommendationBucketKey(request, secret); const result = await db.prepare("INSERT INTO vote_rate_limits (bucket_key, period, count, updated_at) VALUES (?, 'day', 1, datetime('now')) ON CONFLICT(bucket_key) DO UPDATE SET count = count + 1, updated_at = datetime('now') WHERE count < 5").bind(bucketKey).run(); if (Number(result.meta?.changes || 0) !== 1) return { ok: false, remaining: 0 }; return { ok: true, remaining: await recommendationRemaining(db, request, secret) }; }
 async function handleFeedback(request, env, origin) {
   if (Number(request.headers.get("Content-Length") || 0) > 8192) return json({ ok: false, error: "payload_too_large" }, 413, origin);
   if ((request.headers.get("Content-Type") || "").split(";")[0].toLowerCase() !== "application/json") return json({ ok: false, error: "invalid_content_type" }, 415, origin);

@@ -15,7 +15,7 @@ class MockStatement {
 		if (this.sql.includes("WHERE count < 5")) { const key = this.args[0]; const count = this.db.rateLimits.get(key) || 0; if (count < 5) { this.db.rateLimits.set(key, count + 1); return { success: true, meta: { changes: 1 } }; } return { success: true, meta: { changes: 0 } }; }
 		return { success: true };
 	}
-	async first() { if (this.sql.includes("COUNT(*) AS recommendations")) return { recommendations: [...this.db.votes.values()].filter(row => row.receptor_id === this.args[0] && row.vote === 1).length }; if (this.sql.includes("SELECT vote FROM votes")) return this.db.votes.get(`${this.args[0]}|${this.args[1]}`) || null; return null; }
+	async first() { if (this.sql.includes("COUNT(*) AS recommendations")) return { recommendations: [...this.db.votes.values()].filter(row => row.receptor_id === this.args[0] && row.vote === 1).length }; if (this.sql.includes("SELECT vote FROM votes")) return this.db.votes.get(`${this.args[0]}|${this.args[1]}`) || null; if (this.sql.includes("SELECT count FROM vote_rate_limits")) return { count: this.db.rateLimits.get(this.args[0]) || 0 }; return null; }
 	async all() { return { results: this.group(this.sql.includes("receptor_id IN") ? this.args : null) }; }
 	group(ids = null) {
 		const rows = [...this.db.votes.values()].filter(row => row.vote === 1 && (!ids || ids.includes(row.receptor_id)));
@@ -56,9 +56,10 @@ describe("receptores analytics worker", () => {
 		expect(await (await recommend(db, "browser-alpha", "198.51.100.1")).json()).toMatchObject({ recommendations: 1 });
 		expect(await (await recommend(db, "browser-beta", "198.51.100.1")).json()).toMatchObject({ recommendations: 2 });
 	});
-	it("repeating a recommendation is idempotent", async () => {
-		vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ success: true }), { status: 200 })); const db = new MockDb(); await recommend(db, "browser-alpha");
-		expect(await (await recommend(db, "browser-alpha")).json()).toMatchObject({ recommendations: 1 });
+	it("repeating a recommendation is idempotent and does not reduce remaining", async () => {
+		vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ success: true }), { status: 200 })); const db = new MockDb();
+		expect((await (await recommend(db, "browser-alpha")).json()).recommendations_remaining_today).toBe(4);
+		expect(await (await recommend(db, "browser-alpha")).json()).toMatchObject({ recommendations: 1, recommendations_remaining_today: 4 });
 	});
 	it("rejects vote=-1", async () => { const response = await request(new MockDb(), "/vote", voteBody("browser-alpha", -1)); expect(response.status).toBe(400); expect(await response.json()).toEqual({ ok: false, error: "invalid_vote" }); });
 	it("private feedback does not increase recommendations or appear publicly", async () => {
@@ -77,7 +78,7 @@ describe("receptores analytics worker", () => {
 	});
 	it("limits five new recommendations per day and IP", async () => {
 		vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ success: true }), { status: 200 })); const db = new MockDb();
-		for (let i = 0; i < 5; i++) expect((await recommend(db, `browser-${i}`)).status).toBe(200);
+		for (let i = 0; i < 5; i++) { const response = await recommend(db, `browser-${i}`); expect(response.status).toBe(200); expect((await response.json()).recommendations_remaining_today).toBe(4 - i); }
 		const limited = await recommend(db, "browser-5"); expect(limited.status).toBe(429); expect(await limited.json()).toEqual({ ok: false, error: "daily_recommendation_limit", limit: 5 });
 	});
 	it("idempotent repeats do not consume the daily quota", async () => {
