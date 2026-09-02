@@ -26,6 +26,10 @@ npx wrangler d1 migrations apply receptores-analytics-db --remote
 
 ## Secrets y Turnstile
 
+## Verificación Google para comentarios
+
+Configurar `GOOGLE_CLIENT_ID` en el Worker. `POST /feedback` requiere un Google ID token válido además de Turnstile y el rate limiting existente. No se crean cuentas, sesiones, cookies ni migraciones nuevas.
+
 ## WhatsApp Cloud API (recepción mínima)
 
 El webhook `GET/POST /whatsapp/webhook` requiere configurar estas variables como secrets del Worker:

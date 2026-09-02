@@ -32,7 +32,7 @@ class MockDb {
 		return statements.map(() => ({ success: true }));
 	}
 }
-function testEnv(db) { return { receptores_analytics_db: db, VOTE_HMAC_SECRET: "test-hmac-secret", TURNSTILE_SECRET_KEY: "test-turnstile-secret" }; }
+function testEnv(db) { return { receptores_analytics_db: db, VOTE_HMAC_SECRET: "test-hmac-secret", TURNSTILE_SECRET_KEY: "test-turnstile-secret", GOOGLE_CLIENT_ID: "google-client-id" }; }
 function whatsappEnv() { return { WHATSAPP_WEBHOOK_VERIFY_TOKEN: "verify-token", WHATSAPP_APP_SECRET: "app-secret", VOTE_HMAC_SECRET: "test-hmac-secret" }; }
 async function signature(secret, body) {
 	const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
@@ -53,6 +53,15 @@ function validBrowserId(value) { return String(value).padEnd(16, "x"); }
 function voteBody(browser_id, vote = 1) { return { receptor_id: RECEPTOR, browser_id: validBrowserId(browser_id), vote, turnstile_token: "valid-token" }; }
 async function recommend(db, browser_id, ip = "192.0.2.1") { return request(db, "/vote", voteBody(browser_id), ip); }
 async function publicRatings(db) { return worker.fetch(new Request(`https://example.com/ratings?ids=${RECEPTOR}`, { headers: { Origin: ORIGIN } }), testEnv(db), createExecutionContext()); }
+async function makeGoogleToken(overrides = {}, headerOverrides = {}) {
+	const pair = await crypto.subtle.generateKey({ name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" }, true, ["sign", "verify"]);
+	const jwk = await crypto.subtle.exportKey("jwk", pair.publicKey), header = { alg: "RS256", kid: "test-key", typ: "JWT", ...headerOverrides }, claims = { iss: "https://accounts.google.com", aud: "google-client-id", sub: "google-sub-123", exp: Math.floor(Date.now() / 1000) + 3600, ...overrides };
+	const encode = value => btoa(JSON.stringify(value)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, ""), unsigned = `${encode(header)}.${encode(claims)}`;
+	const signatureBytes = new Uint8Array(await crypto.subtle.sign("RSASSA-PKCS1-v1_5", pair.privateKey, new TextEncoder().encode(unsigned)));
+	return { token: `${unsigned}.${btoa(String.fromCharCode(...signatureBytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "")}`, jwks: { keys: [{ ...jwk, kid: "test-key", alg: "RS256", use: "sig" }] } };
+}
+function stubGoogleFetch(jwks) { vi.stubGlobal("fetch", async url => String(url).includes("googleapis.com/oauth2") ? new Response(JSON.stringify(jwks), { status: 200 }) : new Response(JSON.stringify({ success: true }), { status: 200 })); }
+function feedbackBody(google_credential, extra = {}) { return { receptor_id: RECEPTOR, browser_id: validBrowserId("feedback"), turnstile_token: "valid-token", google_credential, reasons: ["trato"], comment: "Privado", ...extra }; }
 
 describe("receptores analytics worker", () => {
 	afterEach(() => vi.unstubAllGlobals());
@@ -83,6 +92,37 @@ describe("receptores analytics worker", () => {
 		const body = JSON.stringify({ object: "whatsapp_business_account", entry: [] }); const response = await whatsappRequest("POST", "/whatsapp/webhook", body, { "X-Hub-Signature-256": await signature("app-secret", body) });
 		expect(response.status).toBe(200);
 	});
+	it("rejects feedback without Google credential", async () => {
+		vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ success: true }), { status: 200 })); const response = await request(new MockDb(), "/feedback", { receptor_id: RECEPTOR, browser_id: validBrowserId("no-google"), turnstile_token: "valid-token", reasons: [], comment: "" });
+		expect(response.status).toBe(403); expect(await response.json()).toEqual({ ok: false, error: "google_verification_required" });
+	});
+	it("rejects feedback when GOOGLE_CLIENT_ID is absent", async () => {
+		vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ success: true }), { status: 200 })); const db = new MockDb(), google = await makeGoogleToken(); const response = await worker.fetch(new Request("https://example.com/feedback", { method: "POST", headers: { Origin: ORIGIN, "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2.1" }, body: JSON.stringify(feedbackBody(google.token)) }), { ...testEnv(db), GOOGLE_CLIENT_ID: "" }, createExecutionContext());
+		expect(response.status).toBe(503); expect(await response.json()).toEqual({ ok: false, error: "server_not_configured" });
+	});
+	it("accepts feedback with a valid Google credential and Turnstile", async () => {
+		const google = await makeGoogleToken(); stubGoogleFetch(google.jwks); const db = new MockDb(); const response = await request(db, "/feedback", feedbackBody(google.token));
+		expect(response.status).toBe(201); expect(db.feedback.size).toBe(1);
+	});
+	it.each([["audience", { aud: "other-client" }], ["issuer", { iss: "https://accounts.example.com" }], ["expiration", { exp: Math.floor(Date.now() / 1000) - 1 }], ["sub", { sub: "" }]])("rejects Google token with invalid %s", async (_, claims) => {
+		const google = await makeGoogleToken(claims); stubGoogleFetch(google.jwks); const response = await request(new MockDb(), "/feedback", feedbackBody(google.token)); expect(response.status).toBe(403); expect(await response.json()).toEqual({ ok: false, error: "google_verification_required" });
+	});
+	it("rejects a JWT payload modified without resigning", async () => {
+		const google = await makeGoogleToken(); stubGoogleFetch(google.jwks); const parts = google.token.split("."); parts[1] = btoa(JSON.stringify({ iss: "https://accounts.google.com", aud: "google-client-id", sub: "altered-sub", exp: Math.floor(Date.now() / 1000) + 3600 })).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, ""); const response = await request(new MockDb(), "/feedback", feedbackBody(parts.join("."))); expect(response.status).toBe(403);
+	});
+	it("rejects a JWT with an algorithm other than RS256", async () => {
+		const google = await makeGoogleToken({}, { alg: "HS256" }); stubGoogleFetch(google.jwks); const response = await request(new MockDb(), "/feedback", feedbackBody(google.token)); expect(response.status).toBe(403);
+	});
+	it("uses Google sub as feedback identity per receptor", async () => {
+		const first = await makeGoogleToken({ sub: "google-sub-one" }); stubGoogleFetch(first.jwks); const db = new MockDb(); expect((await request(db, "/feedback", feedbackBody(first.token, { comment: "Primero" }))).status).toBe(201); expect((await request(db, "/feedback", feedbackBody(first.token, { comment: "Reemplazo" }))).status).toBe(201); expect(db.feedback.size).toBe(1); expect([...db.feedback.values()][0].comment).toBe("Reemplazo");
+		const second = await makeGoogleToken({ sub: "google-sub-two" }); stubGoogleFetch(second.jwks); expect((await request(db, "/feedback", feedbackBody(second.token, { comment: "Segundo" }))).status).toBe(201); expect(db.feedback.size).toBe(2);
+	});
+	it("does not store or log Google data", async () => {
+		const google = await makeGoogleToken({ sub: "private-sub", email: "private@example.com" }); stubGoogleFetch(google.jwks); const db = new MockDb(); const log = vi.spyOn(console, "log").mockImplementation(() => {}); log.mockClear(); await request(db, "/feedback", feedbackBody(google.token)); const row = [...db.feedback.values()][0], stored = JSON.stringify(row); expect(stored).not.toContain("private-sub"); expect(stored).not.toContain("private@example.com"); expect(stored).not.toContain(google.token); expect(log).not.toHaveBeenCalled();
+	});
+	it("keeps the feedback IP rate limit", async () => {
+		const google = await makeGoogleToken(); stubGoogleFetch(google.jwks); const db = new MockDb(); for (let i = 0; i < 20; i++) expect((await request(db, "/feedback", feedbackBody(google.token, { comment: `c${i}` }))).status).toBe(201); expect((await request(db, "/feedback", feedbackBody(google.token))).status).toBe(429);
+	});
 	it("uses browser identity across IP changes and different browsers remain distinct", async () => {
 		vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ success: true }), { status: 200 })); const db = new MockDb();
 		expect((await recommend(db, "browser-alpha", "192.0.2.1")).status).toBe(200);
@@ -96,8 +136,8 @@ describe("receptores analytics worker", () => {
 	});
 	it("rejects vote=-1", async () => { const response = await request(new MockDb(), "/vote", voteBody("browser-alpha", -1)); expect(response.status).toBe(400); expect(await response.json()).toEqual({ ok: false, error: "invalid_vote" }); });
 	it("private feedback does not increase recommendations or appear publicly", async () => {
-		vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ success: true }), { status: 200 })); const db = new MockDb();
-		const response = await request(db, "/feedback", { receptor_id: RECEPTOR, browser_id: validBrowserId("browser-alpha"), turnstile_token: "valid-token", reasons: ["trato"], comment: "Comentario privado" });
+		const google = await makeGoogleToken(); stubGoogleFetch(google.jwks); const db = new MockDb();
+		const response = await request(db, "/feedback", feedbackBody(google.token, { browser_id: validBrowserId("browser-alpha"), comment: "Comentario privado" }));
 		expect(response.status).toBe(201); expect(db.feedback.size).toBe(1); expect(await (await publicRatings(db)).json()).toEqual({ ratings: { [RECEPTOR]: { recommendations: 0 } } });
 		expect(JSON.stringify(await response.clone().json())).not.toContain("Comentario privado");
 	});
@@ -128,8 +168,8 @@ describe("receptores analytics worker", () => {
 		expect((await recommend(db, "browser-other", "198.51.100.1")).status).toBe(200);
 	});
 	it("private feedback does not consume recommendation quota", async () => {
-		vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ success: true }), { status: 200 })); const db = new MockDb();
-		expect((await request(db, "/feedback", { receptor_id: RECEPTOR, browser_id: validBrowserId("feedback"), turnstile_token: "valid-token", reasons: ["trato"], comment: "Privado" })).status).toBe(201);
+		const google = await makeGoogleToken(); stubGoogleFetch(google.jwks); const db = new MockDb();
+		expect((await request(db, "/feedback", feedbackBody(google.token))).status).toBe(201);
 		for (let i = 0; i < 5; i++) expect((await recommend(db, `browser-${i}`)).status).toBe(200);
 	});
 	it("uses America/Santiago for the daily bucket", () => {

@@ -4,6 +4,7 @@ const VALID_EVENTS = new Set(["search", "receptor_open", "contact_click"]);
 const VALID_CONTACT_TYPES = new Set(["telefono", "whatsapp", "email"]);
 const VALID_REASONS = new Set(["rapidez", "comunicacion", "disponibilidad", "cumplimiento", "trato", "honorarios"]);
 const RECEPTOR_ID = /^rec-\d{4,}-[a-z0-9]+(?:-[a-z0-9]+)*$/i;
+const GOOGLE_JWKS_URL = "https://www.googleapis.com/oauth2/v3/certs";
 
 function text(value, max = 250) { if (value === null || value === undefined) return null; const result = String(value).trim(); return result ? result.slice(0, max) : null; }
 function integer(value) { const n = Number(value); return Number.isFinite(n) ? Math.max(0, Math.round(n)) : null; }
@@ -58,6 +59,20 @@ async function handleWhatsAppWebhook(request, env) {
   return new Response("EVENT_RECEIVED", { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8" } });
 }
 function ipOf(request) { return request.headers.get("CF-Connecting-IP") || request.headers.get("X-Forwarded-For")?.split(",")[0].trim() || "unknown"; }
+function base64UrlBytes(value) { const normalized = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "="); const binary = atob(normalized); return Uint8Array.from(binary, character => character.charCodeAt(0)); }
+function parseJwtPart(value) { try { return JSON.parse(new TextDecoder().decode(base64UrlBytes(value))); } catch { return null; } }
+async function verifyGoogleIdToken(token, clientId) {
+  if (typeof token !== "string" || token.length > 16384) return null;
+  const parts = token.split("."); if (parts.length !== 3) return null;
+  const header = parseJwtPart(parts[0]), claims = parseJwtPart(parts[1]);
+  if (!header || !claims || header.alg !== "RS256" || typeof header.kid !== "string" || !header.kid || (claims.iss !== "https://accounts.google.com" && claims.iss !== "accounts.google.com") || claims.aud !== clientId || typeof claims.sub !== "string" || !claims.sub || typeof claims.exp !== "number" || claims.exp <= Math.floor(Date.now() / 1000)) return null;
+  let jwks; try { const response = await fetch(GOOGLE_JWKS_URL, { headers: { Accept: "application/json" } }); if (!response.ok) return null; jwks = await response.json(); } catch { return null; }
+  const jwk = Array.isArray(jwks?.keys) ? jwks.keys.find(key => key?.kid === header.kid && key?.kty === "RSA") : null; if (!jwk) return null;
+  try {
+    const key = await crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
+    return await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, base64UrlBytes(parts[2]), new TextEncoder().encode(`${parts[0]}.${parts[1]}`)) ? claims : null;
+  } catch { return null; }
+}
 async function voterKey(browserId, secret) { return hmac(secret, browserId); }
 export function chileDateKey(date = new Date()) { const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/Santiago", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date); const values = Object.fromEntries(parts.filter(part => part.type !== "literal").map(part => [part.type, part.value])); return `${values.year}-${values.month}-${values.day}`; }
 function periodKey(date, period) { const iso = date.toISOString(); return period === "hour" ? iso.slice(0, 13) : iso.slice(0, 10); }
@@ -116,10 +131,11 @@ async function handleFeedback(request, env, origin) {
   if (!Array.isArray(reasons) || reasons.length > 6 || reasons.some(reason => typeof reason !== "string" || !VALID_REASONS.has(reason))) return json({ ok: false, error: "invalid_reasons" }, 400, origin);
   const comment = body.comment === undefined || body.comment === null ? "" : String(body.comment).trim();
   if (comment.length > 300 || /[<>]/.test(comment)) return json({ ok: false, error: "invalid_comment" }, 400, origin);
-  if (!env.VOTE_HMAC_SECRET) return json({ ok: false, error: "server_not_configured" }, 503, origin);
+  if (!env.VOTE_HMAC_SECRET || !env.GOOGLE_CLIENT_ID) return json({ ok: false, error: "server_not_configured" }, 503, origin);
   if (!await verifyTurnstile(text(body.turnstile_token, 4096), request, env)) return json({ ok: false, error: "turnstile_failed" }, 403, origin);
   const limit = await enforceRateLimit(env.receptores_analytics_db, request, env.VOTE_HMAC_SECRET || ""); if (!limit.ok) return json({ ok: false, error: "rate_limited", retry_after: limit.retry_after }, 429, origin);
-  const key = await voterKey(browserId, env.VOTE_HMAC_SECRET || "");
+  const claims = await verifyGoogleIdToken(body.google_credential, env.GOOGLE_CLIENT_ID); if (!claims) return json({ ok: false, error: "google_verification_required" }, 403, origin);
+  const key = await hmac(env.VOTE_HMAC_SECRET, `google-user\n${claims.sub}`);
   await env.receptores_analytics_db.prepare("INSERT INTO private_feedback (receptor_id, voter_key, reasons_json, comment, moderation_status, created_at, updated_at) VALUES (?, ?, ?, ?, 'private', datetime('now'), datetime('now')) ON CONFLICT(receptor_id, voter_key) DO UPDATE SET reasons_json = excluded.reasons_json, comment = excluded.comment, updated_at = datetime('now')").bind(receptorId, key, JSON.stringify(reasons), comment || null).run();
   return json({ ok: true, receptor_id: receptorId }, 201, origin);
 }
