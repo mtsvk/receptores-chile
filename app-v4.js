@@ -2,6 +2,7 @@
 "use strict";
 
 const DATA_URL = "data/receptores.json";
+const CONTACT_NAMES_URL = "data/nombres_contacto.csv";
 const META_URL = "data/meta.json";
 const COMUNAS_URL = "data/comunas.json";
 const CORTES_URL = "data/cortes.json";
@@ -22,17 +23,19 @@ let filtered = [];
 let visible = PAGE;
 let comunaInfo = new Map();
 let corteInfo = [];
+let contactNames = new Map();
 
 init();
 
 async function init() {
   bind();
   try {
-    const [dataRes, metaRes, comunasRes, cortesRes] = await Promise.all([
+    const [dataRes, metaRes, comunasRes, cortesRes, contactNamesRes] = await Promise.all([
       fetch(DATA_URL),
       fetch(META_URL).catch(() => null),
       fetch(COMUNAS_URL).catch(() => null),
-      fetch(CORTES_URL).catch(() => null)
+      fetch(CORTES_URL).catch(() => null),
+      fetch(CONTACT_NAMES_URL).catch(() => null)
     ]);
     if (!dataRes.ok) throw new Error(`HTTP ${dataRes.status} al cargar receptores.json`);
     const raw = await dataRes.json();
@@ -51,6 +54,7 @@ async function init() {
         comunaInfo = new Map(comunas.flatMap(c => [c.nombre, ...(c.variantes || [])].filter(Boolean).map(name => [norm(name), c])));
       }
       if (cortesRes?.ok) corteInfo = await cortesRes.json();
+      if (contactNamesRes?.ok) contactNames = parseContactAudit(await contactNamesRes.text());
     } catch (_) {}
 
     fillFilters();
@@ -106,6 +110,8 @@ function prepare(r) {
   const flags = arr(r.flags_calidad);
 
   const phones = buildPhones(r);
+  const inferredContact = inferContactName(r.nombre_original || r.nombre || "");
+  const contactOverride = contactNames.get(contactSlug(r.id)) || {};
   const searchBits = [
     r.nombre, r.nombre_original, r.corte, r.territorio, r.tribunal_fuente,
     ...comunas, ...tribunales, ...emails,
@@ -120,6 +126,9 @@ function prepare(r) {
     emails,
     flags,
     phones,
+    contactName: contactOverride.nombre_override || inferredContact.nombre_contacto,
+    contactGivenNames: contactOverride.nombres_override || inferredContact.nombres_contacto,
+    contactSurnames: contactOverride.apellidos_override || inferredContact.apellidos_contacto,
     estimated: flags.some(f => ESTIMATED.has(f)),
     search: norm(searchBits.join(" ")),
     corteKey: norm(r.corte || ""),
@@ -299,6 +308,13 @@ function card(r) {
     button.textContent = "Copiar enlace";
     button.addEventListener("click", () => copyLink(button, canonicalUrl(r)));
     actions.appendChild(button);
+
+    const contactButton = document.createElement("button");
+    contactButton.type = "button";
+    contactButton.className = "action-button";
+    contactButton.textContent = "Guardar contacto";
+    contactButton.addEventListener("click", () => downloadVCard(r));
+    actions.appendChild(contactButton);
   }
   if (actions.childNodes.length) c.appendChild(actions);
 
@@ -362,6 +378,22 @@ function regionRank(value) { const index = REGION_ORDER.findIndex(region => norm
 function sortRegions(values) { return [...(values || [])].sort((a,b) => regionRank(a) - regionRank(b) || compareGeographic(a,b)); }
 function compareCourts(a,b) { const regionA = corteInfo.find(c => c.nombre === a)?.regiones_comunas?.map(name => comunaInfo.get(norm(name))?.region).find(Boolean); const regionB = corteInfo.find(c => c.nombre === b)?.regiones_comunas?.map(name => comunaInfo.get(norm(name))?.region).find(Boolean); return regionRank(regionA) - regionRank(regionB) || compareGeographic(a,b); }
 function canonicalUrl(r) { return `https://receptores.vukusic.cl/receptores/${String(r.id || "").replace(/^rec-\d+-/i, "")}.html`; }
+function vcardEscape(value) { return String(value || "").replace(/([\\,;])/g, "\\$1").replace(/\r?\n|\r/g, "\\n"); }
+function downloadVCard(r) {
+  const phone = r.phones.find(p => p.href)?.href.replace(/^tel:/i, "") || "";
+  const note = [r.corte && `Corte: ${r.corte}`, r.comunas.length && `Comunas: ${r.comunas.join(", ")}`].filter(Boolean).join("; ");
+  const lines = ["BEGIN:VCARD", "VERSION:3.0", r.contactName && `FN:${vcardEscape(r.contactName)}`, `N:${vcardEscape(r.contactSurnames)};${vcardEscape(r.contactGivenNames)};;;`, phone && `TEL;TYPE=CELL:${vcardEscape(phone)}`, r.emails[0] && `EMAIL:${vcardEscape(r.emails[0])}`, "ORG:Receptor Judicial", note && `NOTE:${vcardEscape(note)}`, `URL:${vcardEscape(canonicalUrl(r))}`, "END:VCARD"].filter(Boolean);
+  const blob = new Blob([lines.join("\r\n") + "\r\n"], { type: "text/vcard;charset=utf-8" });
+  const objectUrl = URL.createObjectURL(blob), link = document.createElement("a");
+  link.href = objectUrl; link.download = `${String(r.id || "receptor").replace(/^rec-\d+-/i, "")}.vcf`; document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(objectUrl);
+}
+const CONTACT_PARTICLES = new Set(["de", "del", "la", "las", "los", "van", "von"]);
+const CONTACT_SURNAME_PARTICLES = new Set([...CONTACT_PARTICLES, "san", "santa"]);
+function contactNatural(value) { return String(value || "").trim().split(/\s+/).filter(Boolean).map((word, index) => CONTACT_PARTICLES.has(word.toLowerCase()) && index > 0 ? word.toLowerCase() : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(" "); }
+function consumeContactSurname(tokens, start) { const first = (tokens[start] || "").toLowerCase(); if (first === "de" && ["la", "las", "los"].includes((tokens[start + 1] || "").toLowerCase())) return [tokens.slice(start, start + 3), start + 3]; if (CONTACT_SURNAME_PARTICLES.has(first)) return [tokens.slice(start, start + 2), start + 2]; return [[tokens[start]], start + 1]; }
+function inferContactName(source) { const tokens = String(source || "").trim().split(/\s+/).filter(Boolean); if (tokens.length < 3) { const value = contactNatural(source); return { nombres_contacto:value, apellidos_contacto:"", nombre_contacto:value }; } const [first, firstEnd] = consumeContactSurname(tokens, 0); const [second, secondEnd] = consumeContactSurname(tokens, firstEnd); const names = tokens.slice(secondEnd); if (!names.length) { const value = contactNatural(source); return { nombres_contacto:value, apellidos_contacto:"", nombre_contacto:value }; } const surnames = contactNatural([...first, ...second].join(" ")); const given = contactNatural(names.join(" ")); return { nombres_contacto:given, apellidos_contacto:surnames, nombre_contacto:`${given} ${surnames}` }; }
+function contactSlug(id) { return String(id || "").replace(/^rec-\d+-/i, ""); }
+function parseContactAudit(csv) { const rows = [], current = []; let field = "", quoted = false; for (let i = 0; i < csv.length; i++) { const char = csv[i], next = csv[i + 1]; if (char === '"' && quoted && next === '"') { field += '"'; i++; } else if (char === '"') quoted = !quoted; else if (char === "," && !quoted) { current.push(field); field = ""; } else if ((char === "\n" || char === "\r") && !quoted) { if (char === "\r" && next === "\n") i++; current.push(field); rows.push(current.splice(0)); field = ""; } else field += char; } if (field || current.length) { current.push(field); rows.push(current); } const header = rows.shift() || [], index = name => header.indexOf(name); return new Map(rows.filter(row => row[index("slug")]).map(row => [row[index("slug")], { nombre_override:row[index("nombre_override")] || "", nombres_override:row[index("nombres_override")] || "", apellidos_override:row[index("apellidos_override")] || "" }])); }
 async function copyLink(button, url) { const original = "Copiar enlace"; button.disabled = true; try { if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(url); else { const input = document.createElement("textarea"); input.value = url; input.style.position = "fixed"; input.style.opacity = "0"; document.body.appendChild(input); input.select(); if (!document.execCommand("copy")) throw new Error("copy_failed"); input.remove(); } button.textContent = "Enlace copiado"; } catch (_) { button.textContent = "No se pudo copiar"; } setTimeout(() => { button.textContent = original; button.disabled = false; }, 1600); }
 function byName(a,b) { return String(a.nombre || "").localeCompare(String(b.nombre || ""),"es",{sensitivity:"base"}); }
 function norm(v="") { return String(v).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9ñ]+/g," ").replace(/\s+/g," ").trim(); }

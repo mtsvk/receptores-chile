@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import csv
 import html
 import json
 import re
@@ -15,6 +16,7 @@ DATA_FILE = ROOT / "data" / "receptores.json"
 OUT_DIR = ROOT / "receptores"
 RANKING_DIR = ROOT / "ranking"
 SITEMAP_FILE = ROOT / "sitemap.xml"
+CONTACT_NAMES_FILE = ROOT / "data" / "nombres_contacto.csv"
 BASE_URL = "https://receptores.vukusic.cl"
 SITE_NAME = "Receptores Chile"
 REGION_ORDER = ["Arica y Parinacota", "Tarapacá", "Antofagasta", "Atacama", "Coquimbo", "Valparaíso", "Metropolitana de Santiago", "Libertador General Bernardo O'Higgins", "Maule", "Ñuble", "Biobío", "La Araucanía", "Los Ríos", "Los Lagos", "Aysén del General Carlos Ibáñez del Campo", "Magallanes y de la Antártica Chilena"]
@@ -38,6 +40,76 @@ def receptor_slug(row: dict) -> str:
     if m:
         return slugify(m.group(1))
     return slugify(row.get("nombre") or row.get("nombre_original") or rid)
+
+
+NAME_PARTICLES = {"de", "del", "la", "las", "los", "van", "von"}
+SURNAME_PARTICLES = NAME_PARTICLES | {"san", "santa"}
+MULTI_PARTICLES = {"de la", "de las", "de los"}
+
+
+def natural_name(value: str) -> str:
+    words = str(value or "").strip().split()
+    return " ".join(word.lower() if word.casefold() in NAME_PARTICLES else word[:1].upper() + word[1:].lower() for word in words)
+
+
+def consume_surname(tokens, start):
+    if start >= len(tokens):
+        return [], start
+    first = tokens[start].casefold()
+    if first == "de" and start + 2 < len(tokens) and f"{first} {tokens[start + 1].casefold()}" in MULTI_PARTICLES:
+        return tokens[start:start + 3], start + 3
+    if first in SURNAME_PARTICLES:
+        return tokens[start:start + 2], min(start + 2, len(tokens))
+    return tokens[start:start + 1], start + 1
+
+
+def infer_contact_name(source: str) -> dict:
+    tokens = str(source or "").strip().split()
+    if len(tokens) < 3:
+        suggested = natural_name(source)
+        return {"nombres_contacto": suggested, "apellidos_contacto": "", "nombre_contacto": suggested, "confianza": "BAJA"}
+    first_surname, index = consume_surname(tokens, 0)
+    second_surname, index = consume_surname(tokens, index)
+    given = tokens[index:]
+    if not given or not first_surname or not second_surname:
+        suggested = natural_name(source)
+        return {"nombres_contacto": suggested, "apellidos_contacto": "", "nombre_contacto": suggested, "confianza": "BAJA"}
+    surnames = natural_name(" ".join(first_surname + second_surname))
+    names = natural_name(" ".join(given))
+    if any(len(token) == 1 and token.isalpha() for token in first_surname + second_surname):
+        confidence = "BAJA"
+    else:
+        confidence = "MEDIA" if len(first_surname) > 1 or len(second_surname) > 1 or len(tokens) == 3 else "ALTA"
+    return {"nombres_contacto": names, "apellidos_contacto": surnames, "nombre_contacto": f"{names} {surnames}", "confianza": confidence}
+
+
+def load_contact_audit():
+    if not CONTACT_NAMES_FILE.exists():
+        return {}
+    with CONTACT_NAMES_FILE.open("r", encoding="utf-8", newline="") as handle:
+        return {row.get("slug", ""): row.get("nombre_override", "").strip() for row in csv.DictReader(handle) if row.get("slug")}
+
+
+def write_contact_audit(rows_with_slugs):
+    existing = {}
+    if CONTACT_NAMES_FILE.exists():
+        with CONTACT_NAMES_FILE.open("r", encoding="utf-8", newline="") as handle:
+            existing = {row.get("slug", ""): row for row in csv.DictReader(handle) if row.get("slug")}
+    current = {}
+    for row, slug in rows_with_slugs:
+        source = str(row.get("nombre_original") or row.get("nombre") or "").strip()
+        inferred = infer_contact_name(source)
+        audit_row = existing.get(slug, {})
+        override = str(audit_row.get("nombre_override") or "").strip()
+        current[slug] = {"slug": slug, "nombre_fuente": source, "nombre_sugerido": inferred["nombre_contacto"], "nombres_sugeridos": inferred["nombres_contacto"], "apellidos_sugeridos": inferred["apellidos_contacto"], "confianza": inferred["confianza"], "nombre_override": override, "nombres_override": str(audit_row.get("nombres_override") or "").strip(), "apellidos_override": str(audit_row.get("apellidos_override") or "").strip()}
+    orphaned = {slug: row for slug, row in existing.items() if slug not in current}
+    with CONTACT_NAMES_FILE.open("w", encoding="utf-8", newline="") as handle:
+        fields = ["slug", "nombre_fuente", "nombre_sugerido", "nombres_sugeridos", "apellidos_sugeridos", "confianza", "nombre_override", "nombres_override", "apellidos_override"]
+        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows([current[slug] for _, slug in rows_with_slugs])
+        writer.writerows(orphaned.values())
+    return current
 
 
 def listify(value):
@@ -181,6 +253,39 @@ def render_email_rows(emails):
     return "\n".join(parts)
 
 
+def render_vcard_action(row: dict, slug: str, canonical: str, audit_row: dict) -> str:
+    phones = collect_phones(row)
+    emails = collect_emails(row)
+    note_parts = []
+    corte = str(row.get("corte") or "").strip()
+    comunas = listify(row.get("comunas_cubiertas"))
+    if corte:
+        note_parts.append(f"Corte: {corte}")
+    if comunas:
+        note_parts.append("Comunas: " + ", ".join(comunas))
+    inferred = infer_contact_name(str(row.get("nombre_original") or row.get("nombre") or "").strip())
+    override = audit_row.get("nombre_override", "").strip()
+    given_names = audit_row.get("nombres_override", "").strip() or inferred["nombres_contacto"]
+    surnames = audit_row.get("apellidos_override", "").strip() or inferred["apellidos_contacto"]
+    contact_name = override or inferred["nombre_contacto"]
+    contact = {
+        "name": contact_name,
+        "given": given_names,
+        "surnames": surnames,
+        "phone": next((phone["href"][4:] for phone in phones if phone["href"].startswith("tel:")), ""),
+        "email": emails[0] if emails else "",
+        "note": "; ".join(note_parts),
+        "url": canonical,
+        "filename": slug + ".vcf",
+    }
+    payload = json.dumps(contact, ensure_ascii=False, separators=(",", ":"))
+    return f'''<div class="contact-actions"><button type="button" id="save-contact">Guardar contacto</button></div><script>
+const contactData={payload};
+function escapeVCard(value){{return String(value||"").replace(/([\\\\,;])/g,"\\\\$1").replace(/\\r?\\n|\\r/g,"\\\\n");}}
+document.getElementById("save-contact").addEventListener("click",()=>{{const lines=["BEGIN:VCARD","VERSION:3.0",contactData.name&&`FN:${{escapeVCard(contactData.name)}}`,`N:${{escapeVCard(contactData.surnames)}};${{escapeVCard(contactData.given)}};;;`,contactData.phone&&`TEL;TYPE=CELL:${{escapeVCard(contactData.phone)}}`,contactData.email&&`EMAIL:${{escapeVCard(contactData.email)}}` ,"ORG:Receptor Judicial",contactData.note&&`NOTE:${{escapeVCard(contactData.note)}}`,`URL:${{escapeVCard(contactData.url)}}`,"END:VCARD"].filter(Boolean);const blob=new Blob([lines.join("\\r\\n")+"\\r\\n"],{{type:"text/vcard;charset=utf-8"}});const url=URL.createObjectURL(blob);const link=document.createElement("a");link.href=url;link.download=contactData.filename;document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url);}});
+</script>'''
+
+
 def render_list(values, empty_text="No informado."):
     values = dedupe(values)
     if not values:
@@ -206,13 +311,14 @@ h1{font-size:clamp(30px,5vw,46px);line-height:1.08;letter-spacing:-.03em;margin:
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:0;border-top:1px solid var(--line)}.section{padding:24px 0;border-bottom:1px solid var(--line);min-width:0}
 .section:nth-child(odd){padding-right:28px}.section:nth-child(even){padding-left:28px;border-left:1px solid var(--line)}.section.full{grid-column:1/-1;padding-left:0;padding-right:0;border-left:0}
 h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;margin:0 0 10px;color:var(--muted)}p{margin:0}.contact-list{list-style:none;margin:0;padding:0;display:grid;gap:6px}.empty{color:var(--muted)}
+.contact-actions{margin-top:0}.contact-actions button{font:inherit;font-size:13px;text-decoration:none;border:1px solid #b7b7b0;border-radius:6px;padding:7px 10px;color:var(--ink);background:#fff;cursor:pointer;min-height:34px}.contact-actions button:hover{color:#111;border-color:#111;background:#fafaf8}
 .notice{margin-top:32px;padding:16px 18px;background:var(--surface);border:1px solid var(--line);font-size:14px;color:#444}.meta{margin-top:24px;font-size:13px;color:var(--muted)}
 footer{border-top:1px solid var(--line);padding:22px 0 40px;font-size:13px;color:var(--muted)}footer .shell{display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap}
 @media(max-width:650px){.header-inner{align-items:flex-start;flex-direction:column;gap:4px}main{padding-top:34px}.grid{display:block}.section,.section:nth-child(odd),.section:nth-child(even){padding:20px 0;border-left:0}}
 """
 
 
-def render_receptor_page(row: dict, slug: str) -> str:
+def render_receptor_page(row: dict, slug: str, contact_audit: dict) -> str:
     name = str(row.get("nombre") or row.get("nombre_original") or "Receptor judicial")
     corte = str(row.get("corte") or "").strip()
     tribunal = str(row.get("tribunal_fuente") or "").strip()
@@ -264,6 +370,7 @@ def render_receptor_page(row: dict, slug: str) -> str:
 <section class="section"><h2>Tribunal / adscripción</h2><p>{esc(tribunal or "No informado")}</p></section>
 <section class="section"><h2>Teléfono</h2>{render_phone_rows(phones)}</section>
 <section class="section"><h2>Correo</h2>{render_email_rows(emails)}</section>
+<section class="section full">{render_vcard_action(row, slug, canonical, contact_audit)}</section>
 <section class="section full"><h2>Comunas cubiertas</h2>{render_list(comunas, "Cobertura comunal no informada.")}</section>
 <section class="section full"><h2>Región</h2>{render_list(regiones, "Región no informada.")}</section>
 </div>
@@ -328,11 +435,13 @@ def main():
         used.add(slug)
         rows_with_slugs.append((row, slug))
 
+    contact_audit = write_contact_audit(rows_with_slugs)
+
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     for old in OUT_DIR.glob("*.html"):
         old.unlink()
     for row, slug in rows_with_slugs:
-        (OUT_DIR / f"{slug}.html").write_text(render_receptor_page(row, slug), encoding="utf-8")
+        (OUT_DIR / f"{slug}.html").write_text(render_receptor_page(row, slug, contact_audit[slug]), encoding="utf-8")
     (OUT_DIR / "index.html").write_text(render_directory(rows_with_slugs), encoding="utf-8")
     RANKING_DIR.mkdir(parents=True, exist_ok=True)
     ranking_html = render_ranking_page().replace("ratings.js?v=20260901-" + "4", "ratings.js?v=20260902-1")
@@ -349,6 +458,12 @@ def main():
     print(f"URLs en sitemap:      {sitemap_count}")
     print(f"Directorio:           {OUT_DIR / 'index.html'}")
     print(f"Sitemap:              {SITEMAP_FILE}")
+    counts = {level: sum(1 for row in contact_audit.values() if row.get("confianza") == level) for level in ("ALTA", "MEDIA", "BAJA")}
+    print(f"Auditoría nombres:    total {len(rows_with_slugs)} · ALTA {counts['ALTA']} · MEDIA {counts['MEDIA']} · BAJA {counts['BAJA']}")
+    print("\nCasos MEDIA/BAJA para revisión:")
+    doubtful = [row for row in contact_audit.values() if row.get("confianza") in {"MEDIA", "BAJA"}]
+    for row in sorted(doubtful, key=lambda item: (0 if item.get("confianza") == "BAJA" else 1, item.get("slug", "")))[:20]:
+        print(f"  {row['confianza']} - {row['slug']} - {row['nombre_fuente']} -> {row['nombre_sugerido']}")
     print("\nEjemplos:")
     for row, slug in rows_with_slugs[:3]:
         print(f"  /receptores/{slug}.html — {row.get('nombre','')}")
