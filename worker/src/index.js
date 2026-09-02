@@ -11,6 +11,52 @@ function allowedOrigin(origin) { return origin === PROD_ORIGIN || DEV_ORIGINS.ha
 function corsHeaders(origin, methods = "GET, POST, OPTIONS") { return { "Access-Control-Allow-Origin": origin, "Access-Control-Allow-Methods": methods, "Access-Control-Allow-Headers": "Content-Type", "Access-Control-Max-Age": "86400", "Vary": "Origin" }; }
 function json(data, status = 200, origin = PROD_ORIGIN) { return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders(origin) } }); }
 async function hmac(secret, value) { const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]); const bytes = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(value))); return [...bytes].map(byte => byte.toString(16).padStart(2, "0")).join(""); }
+async function verifyHmac(secret, value, expectedHex) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
+  const expected = new Uint8Array(expectedHex.match(/.{2}/g).map(byte => Number.parseInt(byte, 16)));
+  return crypto.subtle.verify("HMAC", key, expected, new TextEncoder().encode(value));
+}
+function sameSecret(left, right) {
+  const a = new TextEncoder().encode(String(left || "")), b = new TextEncoder().encode(String(right || ""));
+  const length = Math.max(a.length, b.length); let difference = a.length ^ b.length;
+  for (let i = 0; i < length; i++) difference |= (a[i] || 0) ^ (b[i] || 0);
+  return difference === 0;
+}
+function webhookMessages(body) {
+  const messages = [];
+  if (!body || !Array.isArray(body.entry)) return messages;
+  for (const entry of body.entry) {
+    if (!Array.isArray(entry?.changes)) continue;
+    for (const change of entry.changes) {
+      const incoming = change?.value?.messages;
+      if (Array.isArray(incoming)) messages.push(...incoming);
+    }
+  }
+  return messages;
+}
+async function handleWhatsAppWebhook(request, env) {
+  const url = new URL(request.url);
+  if (request.method === "GET") {
+    const mode = url.searchParams.get("hub.mode"), token = url.searchParams.get("hub.verify_token"), challenge = url.searchParams.get("hub.challenge");
+    if (mode === "subscribe" && env.WHATSAPP_WEBHOOK_VERIFY_TOKEN && sameSecret(token, env.WHATSAPP_WEBHOOK_VERIFY_TOKEN) && challenge !== null) return new Response(challenge, { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+    return new Response("Forbidden", { status: 403 });
+  }
+  if (request.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
+  if (!env.WHATSAPP_APP_SECRET) return new Response("WhatsApp webhook is not configured: WHATSAPP_APP_SECRET is missing", { status: 503 });
+  if (!env.VOTE_HMAC_SECRET) return new Response("WhatsApp webhook is not configured: VOTE_HMAC_SECRET is missing", { status: 503 });
+  const rawBody = await request.text(), signature = request.headers.get("X-Hub-Signature-256") || "";
+  if (!/^sha256=[0-9a-f]{64}$/i.test(signature) || !await verifyHmac(env.WHATSAPP_APP_SECRET, rawBody, signature.slice(7).toLowerCase())) return new Response("Invalid webhook signature", { status: 401 });
+  let body; try { body = JSON.parse(rawBody); } catch { return new Response("Invalid JSON", { status: 400 }); }
+  for (const message of webhookMessages(body)) {
+    const sender = typeof message?.from === "string" ? message.from.trim() : "";
+    if (!sender) continue;
+    const messageId = typeof message?.id === "string" ? message.id : null;
+    const messageText = typeof message?.text?.body === "string" ? message.text.body : null;
+    const userKey = await hmac(env.VOTE_HMAC_SECRET, `whatsapp-user\n${sender}`);
+    console.log("whatsapp_message", { message_id: messageId, user_key: userKey });
+  }
+  return new Response("EVENT_RECEIVED", { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+}
 function ipOf(request) { return request.headers.get("CF-Connecting-IP") || request.headers.get("X-Forwarded-For")?.split(",")[0].trim() || "unknown"; }
 async function voterKey(browserId, secret) { return hmac(secret, browserId); }
 export function chileDateKey(date = new Date()) { const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/Santiago", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date); const values = Object.fromEntries(parts.filter(part => part.type !== "literal").map(part => [part.type, part.value])); return `${values.year}-${values.month}-${values.day}`; }
@@ -92,6 +138,7 @@ async function handleTop(url, env, origin) {
 export default { async fetch(request, env) {
   const url = new URL(request.url), origin = request.headers.get("Origin") || "";
   if (url.pathname === "/health" && request.method === "GET") return new Response(JSON.stringify({ ok: true, service: "receptores-analytics" }), { headers: { "Content-Type": "application/json; charset=utf-8" } });
+  if (url.pathname === "/whatsapp/webhook") return handleWhatsAppWebhook(request, env);
   if (!allowedOrigin(origin)) return new Response("Forbidden", { status: 403 });
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(origin) });
   if (url.pathname === "/event") return request.method === "POST" ? handleEvent(request, env, origin) : json({ ok: false, error: "method_not_allowed" }, 405, origin);

@@ -33,6 +33,17 @@ class MockDb {
 	}
 }
 function testEnv(db) { return { receptores_analytics_db: db, VOTE_HMAC_SECRET: "test-hmac-secret", TURNSTILE_SECRET_KEY: "test-turnstile-secret" }; }
+function whatsappEnv() { return { WHATSAPP_WEBHOOK_VERIFY_TOKEN: "verify-token", WHATSAPP_APP_SECRET: "app-secret", VOTE_HMAC_SECRET: "test-hmac-secret" }; }
+async function signature(secret, body) {
+	const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+	const bytes = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body)));
+	return `sha256=${[...bytes].map(byte => byte.toString(16).padStart(2, "0")).join("")}`;
+}
+async function whatsappRequest(method, url, body, headers = {}) {
+	const requestHeaders = { ...headers };
+	if (body !== undefined) requestHeaders["Content-Type"] = "application/json";
+	return worker.fetch(new Request(`https://example.com${url}`, { method, headers: requestHeaders, body }), whatsappEnv(), createExecutionContext());
+}
 async function request(db, path, body, ip = "192.0.2.1") {
 	const ctx = createExecutionContext();
 	const response = await worker.fetch(new Request(`https://example.com${path}`, { method: "POST", headers: { Origin: ORIGIN, "Content-Type": "application/json", "CF-Connecting-IP": ip }, body: JSON.stringify(body) }), testEnv(db), ctx);
@@ -50,6 +61,28 @@ describe("receptores analytics worker", () => {
 		expect(response.status).toBe(200); expect(await response.json()).toEqual({ ok: true, service: "receptores-analytics" });
 	});
 	it("responds with health (integration style)", async () => { const response = await SELF.fetch("http://example.com/health"); expect(response.status).toBe(200); expect(await response.json()).toEqual({ ok: true, service: "receptores-analytics" }); });
+	it("verifies the WhatsApp webhook GET challenge", async () => {
+		const response = await whatsappRequest("GET", "/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=verify-token&hub.challenge=challenge-123");
+		expect(response.status).toBe(200); expect(await response.text()).toBe("challenge-123");
+	});
+	it("rejects an invalid WhatsApp webhook GET challenge", async () => {
+		const response = await whatsappRequest("GET", "/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=wrong&hub.challenge=challenge-123");
+		expect(response.status).toBe(403);
+	});
+	it("accepts a valid WhatsApp webhook POST signature", async () => {
+		const body = JSON.stringify({ entry: [{ changes: [{ value: { messages: [{ from: "56912345678", id: "wamid.TEST", text: { body: "Hola" } }] } }] }] });
+		const log = vi.spyOn(console, "log").mockImplementation(() => {});
+		const response = await whatsappRequest("POST", "/whatsapp/webhook", body, { "X-Hub-Signature-256": await signature("app-secret", body) });
+		expect(response.status).toBe(200); expect(log).toHaveBeenCalledWith("whatsapp_message", expect.objectContaining({ message_id: "wamid.TEST" })); expect(log.mock.calls.flat().join(" ")).not.toContain("56912345678"); expect(log.mock.calls.flat().join(" ")).not.toContain("Hola");
+	});
+	it("rejects an invalid WhatsApp webhook POST signature", async () => {
+		const body = JSON.stringify({ entry: [] }); const response = await whatsappRequest("POST", "/whatsapp/webhook", body, { "X-Hub-Signature-256": "sha256=" + "0".repeat(64) });
+		expect(response.status).toBe(401);
+	});
+	it("accepts a valid WhatsApp payload without messages", async () => {
+		const body = JSON.stringify({ object: "whatsapp_business_account", entry: [] }); const response = await whatsappRequest("POST", "/whatsapp/webhook", body, { "X-Hub-Signature-256": await signature("app-secret", body) });
+		expect(response.status).toBe(200);
+	});
 	it("uses browser identity across IP changes and different browsers remain distinct", async () => {
 		vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ success: true }), { status: 200 })); const db = new MockDb();
 		expect((await recommend(db, "browser-alpha", "192.0.2.1")).status).toBe(200);

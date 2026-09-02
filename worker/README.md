@@ -26,6 +26,15 @@ npx wrangler d1 migrations apply receptores-analytics-db --remote
 
 ## Secrets y Turnstile
 
+## WhatsApp Cloud API (recepción mínima)
+
+El webhook `GET/POST /whatsapp/webhook` requiere configurar estas variables como secrets del Worker:
+
+- `WHATSAPP_WEBHOOK_VERIFY_TOKEN`
+- `WHATSAPP_APP_SECRET`
+
+Esta prueba sólo recibe y valida mensajes entrantes. Todavía no envía mensajes ni verifica usuarios.
+
 Configurar como secrets del Worker (no en el repositorio):
 
 ```powershell
