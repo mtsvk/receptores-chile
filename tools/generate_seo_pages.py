@@ -17,6 +17,7 @@ RANKING_DIR = ROOT / "ranking"
 SITEMAP_FILE = ROOT / "sitemap.xml"
 BASE_URL = "https://receptores.vukusic.cl"
 SITE_NAME = "Receptores Chile"
+REGION_ORDER = ["Arica y Parinacota", "Tarapacá", "Antofagasta", "Atacama", "Coquimbo", "Valparaíso", "Metropolitana de Santiago", "Libertador General Bernardo O'Higgins", "Maule", "Ñuble", "Biobío", "La Araucanía", "Los Ríos", "Los Lagos", "Aysén del General Carlos Ibáñez del Campo", "Magallanes y de la Antártica Chilena"]
 
 
 def esc(value) -> str:
@@ -59,6 +60,19 @@ def dedupe(values):
         seen.add(key)
         out.append(text)
     return out
+
+
+def region_rank(value):
+    key = unicodedata.normalize("NFD", str(value or "")).encode("ascii", "ignore").decode().casefold()
+    for index, region in enumerate(REGION_ORDER):
+        target = unicodedata.normalize("NFD", region).encode("ascii", "ignore").decode().casefold()
+        if key == target:
+            return index
+    return len(REGION_ORDER)
+
+
+def sort_regions(values):
+    return sorted(dedupe(values), key=lambda value: (region_rank(value), str(value).casefold()))
 
 
 def phone_chunks(value: str):
@@ -179,7 +193,7 @@ def render_rating_widget(receptor_id: str) -> str:
 
 
 def render_rating_scripts() -> str:
-    return '''<link rel="stylesheet" href="/ratings.css?v=20260901-2"><script>window.RECEPTORES_TURNSTILE_SITE_KEY = "0x4AAAAAAEkQy8FIbatMffjR";</script><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" defer></script><script src="/ratings.js?v=20260901-3" defer></script>'''
+    return '''<link rel="stylesheet" href="/ratings.css?v=20260901-2"><script>window.RECEPTORES_TURNSTILE_SITE_KEY = "0x4AAAAAAEkQy8FIbatMffjR";</script><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" defer></script><script src="/ratings.js?v=20260901-4" defer></script>'''
 
 
 PAGE_CSS = """
@@ -204,7 +218,7 @@ def render_receptor_page(row: dict, slug: str) -> str:
     tribunal = str(row.get("tribunal_fuente") or "").strip()
     territorio = str(row.get("territorio") or "").strip()
     comunas = listify(row.get("comunas_cubiertas"))
-    regiones = listify(row.get("regiones"))
+    regiones = sort_regions(listify(row.get("regiones")))
     phones = collect_phones(row)
     emails = collect_emails(row)
     canonical = f"{BASE_URL}/receptores/{slug}.html"
@@ -283,7 +297,7 @@ def render_directory(rows_with_slugs) -> str:
 
 
 def render_ranking_page() -> str:
-    return f'''<!doctype html><html lang="es-CL"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ranking de receptores judiciales | {SITE_NAME}</title><meta name="description" content="Ranking público de receptores judiciales en Chile según recomendaciones anónimas."><meta name="robots" content="index,follow"><link rel="canonical" href="{BASE_URL}/ranking/"><style>{PAGE_CSS}.ranking{{list-style:none;padding:0;margin:26px 0;border-top:1px solid var(--line)}}.ranking li{{display:grid;grid-template-columns:2fr 1fr .7fr .7fr;gap:14px;padding:14px 0;border-bottom:1px solid var(--line);align-items:baseline}}.ranking small{{color:var(--muted)}}.ranking-error{{color:var(--muted)}}@media(max-width:650px){{.ranking li{{grid-template-columns:1fr 1fr}}}}</style></head><body><header><div class="shell header-inner"><a class="brand" href="/">Receptores Chile</a><a class="back" href="/">Buscador</a></div></header><main class="shell"><p class="eyebrow">Recomendaciones anónimas</p><h1>Ranking de recomendaciones</h1><p class="lead">El orden prioriza la cantidad de recomendaciones recibidas.</p><ul id="ranking" class="ranking"><li>Cargando ranking…</li></ul></main><footer><div class="shell"><span>Receptores Chile</span><a href="/">Volver al buscador</a></div></footer><script>window.RECEPTORES_TURNSTILE_SITE_KEY="0x4AAAAAAEkQy8FIbatMffjR";</script><script src="/ratings.js?v=20260901-3" defer></script><script>const API="https://receptores-analytics.adminbase100.workers.dev";fetch("/data/receptores.json").then(r=>r.json()).then(rows=>fetch(API+"/ratings/top?limit=100").then(r=>r.json()).then(data=>{{const byId=new Map(rows.map(r=>[r.id,r]));const el=document.getElementById("ranking");el.replaceChildren(...(data.ratings||[]).map(item=>{{const r=byId.get(item.receptor_id)||{{}};const li=document.createElement("li");li.innerHTML=`<span><a href="/receptores/${{String(r.id||item.receptor_id).replace(/^rec-\\d+-/,"")}}.html">${{r.nombre||item.receptor_id}}</a></span><small>${{r.corte||r.tribunal_fuente||"Adscripción no informada"}}</small><span>${{item.recommendations}} recomendaciones</span>`;return li}}));if(!data.ratings?.length)el.innerHTML="Aún no hay receptores con 5 recomendaciones."}})).catch(()=>document.getElementById("ranking").innerHTML="No fue posible cargar el ranking.");</script></body></html>'''
+    return f'''<!doctype html><html lang="es-CL"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ranking de receptores judiciales | {SITE_NAME}</title><meta name="description" content="Ranking público de receptores judiciales en Chile según recomendaciones anónimas."><meta name="robots" content="index,follow"><link rel="canonical" href="{BASE_URL}/ranking/"><style>{PAGE_CSS}.ranking{{list-style:none;padding:0;margin:26px 0;border-top:1px solid var(--line)}}.ranking li{{display:grid;grid-template-columns:2fr 1fr .7fr .7fr;gap:14px;padding:14px 0;border-bottom:1px solid var(--line);align-items:baseline}}.ranking small{{color:var(--muted)}}.ranking-error{{color:var(--muted)}}@media(max-width:650px){{.ranking li{{grid-template-columns:1fr 1fr}}}}</style></head><body><header><div class="shell header-inner"><a class="brand" href="/">Receptores Chile</a><a class="back" href="/">Buscador</a></div></header><main class="shell"><p class="eyebrow">Recomendaciones anónimas</p><h1>Ranking de recomendaciones</h1><p class="lead">El orden prioriza la cantidad de recomendaciones recibidas.</p><ul id="ranking" class="ranking"><li>Cargando ranking…</li></ul></main><footer><div class="shell"><span>Receptores Chile</span><a href="/">Volver al buscador</a></div></footer><script>window.RECEPTORES_TURNSTILE_SITE_KEY="0x4AAAAAAEkQy8FIbatMffjR";</script><script src="/ratings.js?v=20260901-4" defer></script><script>const API="https://receptores-analytics.adminbase100.workers.dev";fetch("/data/receptores.json").then(r=>r.json()).then(rows=>fetch(API+"/ratings/top?limit=100").then(r=>r.json()).then(data=>{{const byId=new Map(rows.map(r=>[r.id,r]));const el=document.getElementById("ranking");el.replaceChildren(...(data.ratings||[]).map(item=>{{const r=byId.get(item.receptor_id)||{{}};const li=document.createElement("li");li.innerHTML=`<span><a href="/receptores/${{String(r.id||item.receptor_id).replace(/^rec-\\d+-/,"")}}.html">${{r.nombre||item.receptor_id}}</a></span><small>${{r.corte||r.tribunal_fuente||"Adscripción no informada"}}</small><span>${{item.recommendations}} recomendaciones</span>`;return li}}));if(!data.ratings?.length)el.innerHTML="Aún no hay receptores con 5 recomendaciones."}})).catch(()=>document.getElementById("ranking").innerHTML="No fue posible cargar el ranking.");</script></body></html>'''
 
 
 def write_sitemap(rows_with_slugs, today: str):

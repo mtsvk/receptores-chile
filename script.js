@@ -96,7 +96,7 @@
   function createRow(row){
     const tr=document.createElement("tr");if(row.id)tr.id=row.id;
     const c1=document.createElement("td"),name=document.createElement("p");name.className="receiver-name";name.textContent=row.nombre||"Sin nombre";c1.append(name,createDetails(row));
-    const c2=document.createElement("td"),primary=document.createElement("p");primary.className="cell-primary";primary.textContent=row.tribunal_fuente||row.territorio||row.corte||"No informado";c2.appendChild(primary);if(row.corte&&row.corte!==row.tribunal_fuente){const p=document.createElement("p");p.className="cell-secondary";p.textContent=row.corte;c2.appendChild(p)}if(row._coverageEstimated){const s=document.createElement("span");s.className="estimate-label";s.textContent="Cobertura estimada · verificar";c2.appendChild(s)}
+    const c2=document.createElement("td"),primary=document.createElement("p");primary.className="cell-primary";primary.textContent=row.tribunal_fuente||row.territorio||row.corte||"No informado";c2.appendChild(primary);if(row.corte&&row.corte!==row.tribunal_fuente){const p=document.createElement("p");p.className="cell-secondary";p.textContent=row.corte;c2.appendChild(p)}
     const c3=document.createElement("td");c3.appendChild(createContactBlock(row));tr.append(c1,c2,c3);return tr;
   }
   function createContactBlock(row){
@@ -114,8 +114,8 @@
     raw.forEach(v=>{const d=digits(v);if(!d||seen.has(d))return;seen.add(d);if(safe.some(l=>matches(d,l)))return;const s=document.createElement("span");s.className="phone-raw";s.textContent=v;out.push(s)});return out;
   }
   function createDetails(row){
-    const d=document.createElement("details");d.className="row-details";const s=document.createElement("summary");s.textContent=row._coverageEstimated?"Cobertura estimada y fuente":"Cobertura y fuente";d.appendChild(s);const c=document.createElement("div");c.className="details-content";
-    if(row.comunas_cubiertas.length)c.appendChild(detailP(row._coverageEstimated?"Comunas estimadas: ":"Comunas: ",row.comunas_cubiertas.join(", ")));
+    const d=document.createElement("details");d.className="row-details";const s=document.createElement("summary");s.textContent="Cobertura y fuente";d.appendChild(s);const c=document.createElement("div");c.className="details-content";
+    if(row.comunas_cubiertas.length)c.appendChild(detailP("Comunas: ",row.comunas_cubiertas.join(", ")));
     if(row.tribunales_relacionados.length)c.appendChild(detailP("Tribunales relacionados: ",row.tribunales_relacionados.join(", ")));
     if(row.fuente||row.fecha_fuente)c.appendChild(detailP("Fuente: ",[row.fuente,row.fecha_fuente].filter(Boolean).join(" · ")));
     d.appendChild(c);return d;
