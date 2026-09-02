@@ -89,6 +89,14 @@ async function verifyTurnstile(token, request, env) { if (!env.TURNSTILE_SECRET_
 function recommendationCount(row) { return Number(row?.recommendations || 0); }
 function publicRating(row) { const recommendations = recommendationCount(row); return { recommendations }; }
 function rankingScore(recommendations) { return Math.log1p(recommendations); }
+function publicReasons(value) { try { const reasons = JSON.parse(value || "[]"); return Array.isArray(reasons) ? reasons.filter(reason => typeof reason === "string" && VALID_REASONS.has(reason)) : []; } catch { return []; } }
+async function handleComments(url, env, origin) {
+  const receptorId = text(url.searchParams.get("receptor_id"), 160);
+  if (!RECEPTOR_ID.test(receptorId || "")) return json({ ok: false, error: "invalid_receptor_id" }, 400, origin);
+  const result = await env.receptores_analytics_db.prepare("SELECT reasons_json, comment, published_at FROM private_feedback WHERE receptor_id = ? AND publication_status = 'approved' AND comment IS NOT NULL AND length(trim(comment)) > 0 ORDER BY published_at DESC LIMIT 50").bind(receptorId).all();
+  const comments = (result.results || []).map(row => ({ reasons: publicReasons(row.reasons_json), comment: String(row.comment), published_at: row.published_at || null }));
+  return json({ comments }, 200, origin);
+}
 async function handleEvent(request, env, origin) {
   if (Number(request.headers.get("Content-Length") || 0) > 8192) return json({ ok: false, error: "payload_too_large" }, 413, origin);
   let body; try { body = await request.json(); } catch { return json({ ok: false, error: "invalid_json" }, 400, origin); }
@@ -130,13 +138,15 @@ async function handleFeedback(request, env, origin) {
   const reasons = body.reasons === undefined ? [] : body.reasons;
   if (!Array.isArray(reasons) || reasons.length > 6 || reasons.some(reason => typeof reason !== "string" || !VALID_REASONS.has(reason))) return json({ ok: false, error: "invalid_reasons" }, 400, origin);
   const comment = body.comment === undefined || body.comment === null ? "" : String(body.comment).trim();
+  const allowPublication = body.allow_publication === true;
   if (comment.length > 300 || /[<>]/.test(comment)) return json({ ok: false, error: "invalid_comment" }, 400, origin);
+  if (allowPublication && !comment) return json({ ok: false, error: "public_comment_requires_text" }, 400, origin);
   if (!env.VOTE_HMAC_SECRET || !env.GOOGLE_CLIENT_ID) return json({ ok: false, error: "server_not_configured" }, 503, origin);
   if (!await verifyTurnstile(text(body.turnstile_token, 4096), request, env)) return json({ ok: false, error: "turnstile_failed" }, 403, origin);
   const limit = await enforceRateLimit(env.receptores_analytics_db, request, env.VOTE_HMAC_SECRET || ""); if (!limit.ok) return json({ ok: false, error: "rate_limited", retry_after: limit.retry_after }, 429, origin);
   const claims = await verifyGoogleIdToken(body.google_credential, env.GOOGLE_CLIENT_ID); if (!claims) return json({ ok: false, error: "google_verification_required" }, 403, origin);
   const key = await hmac(env.VOTE_HMAC_SECRET, `google-user\n${claims.sub}`);
-  await env.receptores_analytics_db.prepare("INSERT INTO private_feedback (receptor_id, voter_key, reasons_json, comment, moderation_status, created_at, updated_at) VALUES (?, ?, ?, ?, 'private', datetime('now'), datetime('now')) ON CONFLICT(receptor_id, voter_key) DO UPDATE SET reasons_json = excluded.reasons_json, comment = excluded.comment, updated_at = datetime('now')").bind(receptorId, key, JSON.stringify(reasons), comment || null).run();
+  await env.receptores_analytics_db.prepare("INSERT INTO private_feedback (receptor_id, voter_key, reasons_json, comment, moderation_status, publication_status, publication_consent_at, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, 'private', CASE WHEN ? = 1 THEN 'pending' ELSE 'not_requested' END, CASE WHEN ? = 1 THEN datetime('now') ELSE NULL END, NULL, datetime('now'), datetime('now')) ON CONFLICT(receptor_id, voter_key) DO UPDATE SET reasons_json = excluded.reasons_json, comment = excluded.comment, moderation_status = 'private', publication_status = excluded.publication_status, publication_consent_at = excluded.publication_consent_at, published_at = NULL, updated_at = datetime('now')").bind(receptorId, key, JSON.stringify(reasons), comment || null, allowPublication ? 1 : 0, allowPublication ? 1 : 0).run();
   return json({ ok: true, receptor_id: receptorId }, 201, origin);
 }
 async function ratingFor(db, id) { return publicRating(await db.prepare("SELECT COUNT(*) AS recommendations FROM votes WHERE receptor_id = ? AND vote = 1").bind(id).first()); }
@@ -160,6 +170,7 @@ export default { async fetch(request, env) {
   if (url.pathname === "/event") return request.method === "POST" ? handleEvent(request, env, origin) : json({ ok: false, error: "method_not_allowed" }, 405, origin);
   if (url.pathname === "/vote") return request.method === "POST" ? handleVote(request, env, origin) : json({ ok: false, error: "method_not_allowed" }, 405, origin);
   if (url.pathname === "/feedback") return request.method === "POST" ? handleFeedback(request, env, origin) : json({ ok: false, error: "method_not_allowed" }, 405, origin);
+  if (url.pathname === "/comments") return request.method === "GET" ? handleComments(url, env, origin) : json({ ok: false, error: "method_not_allowed" }, 405, origin);
   if (url.pathname === "/ratings" && request.method === "GET") return handleRatings(url, env, origin);
   if (url.pathname === "/ratings/top" && request.method === "GET") return handleTop(url, env, origin);
   return new Response("Not found", { status: 404 });

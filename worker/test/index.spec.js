@@ -11,12 +11,12 @@ class MockStatement {
 	async run() {
 		if (this.sql.includes("INSERT INTO votes")) this.db.votes.set(`${this.args[0]}|${this.args[1]}`, { receptor_id: this.args[0], voter_key: this.args[1], vote: 1 });
 		if (this.sql.includes("UPDATE votes")) { const row = this.db.votes.get(`${this.args[0]}|${this.args[1]}`); if (row) row.vote = 1; }
-		if (this.sql.includes("INSERT INTO private_feedback")) this.db.feedback.set(`${this.args[0]}|${this.args[1]}`, { receptor_id: this.args[0], voter_key: this.args[1], reasons_json: this.args[2], comment: this.args[3] });
+		if (this.sql.includes("INSERT INTO private_feedback")) this.db.feedback.set(`${this.args[0]}|${this.args[1]}`, { receptor_id: this.args[0], voter_key: this.args[1], reasons_json: this.args[2], comment: this.args[3], publication_status: this.args[4] === 1 ? "pending" : "not_requested", publication_consent_at: this.args[4] === 1 ? "now" : null, published_at: null });
 		if (this.sql.includes("WHERE count < 5")) { const key = this.args[0]; const count = this.db.rateLimits.get(key) || 0; if (count < 5) { this.db.rateLimits.set(key, count + 1); return { success: true, meta: { changes: 1 } }; } return { success: true, meta: { changes: 0 } }; }
 		return { success: true };
 	}
 	async first() { if (this.sql.includes("COUNT(*) AS recommendations")) return { recommendations: [...this.db.votes.values()].filter(row => row.receptor_id === this.args[0] && row.vote === 1).length }; if (this.sql.includes("SELECT vote FROM votes")) return this.db.votes.get(`${this.args[0]}|${this.args[1]}`) || null; if (this.sql.includes("SELECT count FROM vote_rate_limits")) return { count: this.db.rateLimits.get(this.args[0]) || 0 }; return null; }
-	async all() { return { results: this.group(this.sql.includes("receptor_id IN") ? this.args : null) }; }
+	async all() { if (this.sql.includes("publication_status = 'approved'")) return { results: [...this.db.feedback.values()].filter(row => row.receptor_id === this.args[0] && row.publication_status === "approved" && row.comment).map(row => ({ reasons_json: row.reasons_json, comment: row.comment, published_at: row.published_at })) }; return { results: this.group(this.sql.includes("receptor_id IN") ? this.args : null) }; }
 	group(ids = null) {
 		const rows = [...this.db.votes.values()].filter(row => row.vote === 1 && (!ids || ids.includes(row.receptor_id)));
 		const counts = new Map(); for (const row of rows) counts.set(row.receptor_id, (counts.get(row.receptor_id) || 0) + 1);
@@ -62,6 +62,7 @@ async function makeGoogleToken(overrides = {}, headerOverrides = {}) {
 }
 function stubGoogleFetch(jwks) { vi.stubGlobal("fetch", async url => String(url).includes("googleapis.com/oauth2") ? new Response(JSON.stringify(jwks), { status: 200 }) : new Response(JSON.stringify({ success: true }), { status: 200 })); }
 function feedbackBody(google_credential, extra = {}) { return { receptor_id: RECEPTOR, browser_id: validBrowserId("feedback"), turnstile_token: "valid-token", google_credential, reasons: ["trato"], comment: "Privado", ...extra }; }
+async function comments(db, receptorId = RECEPTOR) { return worker.fetch(new Request(`https://example.com/comments?receptor_id=${encodeURIComponent(receptorId)}`, { headers: { Origin: ORIGIN } }), testEnv(db), createExecutionContext()); }
 
 describe("receptores analytics worker", () => {
 	afterEach(() => vi.unstubAllGlobals());
@@ -140,6 +141,40 @@ describe("receptores analytics worker", () => {
 		const response = await request(db, "/feedback", feedbackBody(google.token, { browser_id: validBrowserId("browser-alpha"), comment: "Comentario privado" }));
 		expect(response.status).toBe(201); expect(db.feedback.size).toBe(1); expect(await (await publicRatings(db)).json()).toEqual({ ratings: { [RECEPTOR]: { recommendations: 0 } } });
 		expect(JSON.stringify(await response.clone().json())).not.toContain("Comentario privado");
+	});
+	it("feedback publication requires explicit opt-in and starts pending", async () => {
+		const google = await makeGoogleToken(); stubGoogleFetch(google.jwks); const db = new MockDb();
+		expect((await request(db, "/feedback", feedbackBody(google.token))).status).toBe(201);
+		expect([...db.feedback.values()][0].publication_status).toBe("not_requested");
+		expect((await request(db, "/feedback", feedbackBody(google.token, { allow_publication: true, comment: "Experiencia concreta" }))).status).toBe(201);
+		expect([...db.feedback.values()][0].publication_status).toBe("pending");
+	});
+	it("public comments expose only approved feedback", async () => {
+		const db = new MockDb(); db.feedback.set("approved", { receptor_id: RECEPTOR, voter_key: "secret-voter-key", reasons_json: '["rapidez","<script>alert(1)</script>"]', comment: "Comentario aprobado", publication_status: "approved", published_at: "2026-09-01 12:00:00" });
+		for (const status of ["pending", "rejected", "not_requested"]) db.feedback.set(status, { receptor_id: RECEPTOR, voter_key: status, reasons_json: '["trato"]', comment: status, publication_status: status, published_at: null });
+		const response = await comments(db); expect(response.status).toBe(200); const body = await response.json();
+		expect(body).toEqual({ comments: [{ reasons: ["rapidez"], comment: "Comentario aprobado", published_at: "2026-09-01 12:00:00" }] });
+		expect(JSON.stringify(body)).not.toContain("secret-voter-key");
+	});
+	it("editing approved feedback returns to pending, and opting out removes publication", async () => {
+		const google = await makeGoogleToken(); stubGoogleFetch(google.jwks); const db = new MockDb();
+		expect((await request(db, "/feedback", feedbackBody(google.token, { allow_publication: true, comment: "Anterior" }))).status).toBe(201);
+		[...db.feedback.values()][0].publication_status = "approved";
+		expect((await request(db, "/feedback", feedbackBody(google.token, { allow_publication: true, comment: "Editado" }))).status).toBe(201);
+		expect([...db.feedback.values()][0].publication_status).toBe("pending");
+		expect((await request(db, "/feedback", feedbackBody(google.token, { allow_publication: false, comment: "Privado otra vez" }))).status).toBe(201);
+		expect([...db.feedback.values()][0].publication_status).toBe("not_requested");
+	});
+	it("rejects an opted-in empty public comment", async () => {
+		const google = await makeGoogleToken(); stubGoogleFetch(google.jwks); const response = await request(new MockDb(), "/feedback", feedbackBody(google.token, { allow_publication: true, comment: "" }));
+		expect(response.status).toBe(400); expect(await response.json()).toEqual({ ok: false, error: "public_comment_requires_text" });
+	});
+	it("rejects invalid public comment receptor ids", async () => {
+		const response = await comments(new MockDb(), "not-a-receptor"); expect(response.status).toBe(400); expect(await response.json()).toEqual({ ok: false, error: "invalid_receptor_id" });
+	});
+	it("requires Turnstile for feedback publication", async () => {
+		vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ success: false }), { status: 200 })); const google = await makeGoogleToken(); const response = await request(new MockDb(), "/feedback", feedbackBody(google.token, { allow_publication: true }));
+		expect(response.status).toBe(403); expect(await response.json()).toEqual({ ok: false, error: "turnstile_failed" });
 	});
 	it("public endpoints expose only recommendations and ranking requires five", async () => {
 		vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ success: true }), { status: 200 })); const db = new MockDb();

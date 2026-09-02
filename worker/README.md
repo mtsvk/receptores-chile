@@ -28,7 +28,9 @@ npx wrangler d1 migrations apply receptores-analytics-db --remote
 
 ## Verificación Google para comentarios
 
-Configurar `GOOGLE_CLIENT_ID` en el Worker. `POST /feedback` requiere un Google ID token válido además de Turnstile y el rate limiting existente. No se crean cuentas, sesiones, cookies ni migraciones nuevas.
+Configurar `GOOGLE_CLIENT_ID` en el Worker. `POST /feedback` requiere un Google ID token válido además de Turnstile y el rate limiting existente. Los comentarios sin autorización de publicación siguen privados; los autorizados quedan pendientes de moderación. No se crean cuentas, sesiones ni cookies.
+
+`GET /comments?receptor_id=...` devuelve sólo comentarios aprobados para la ficha correspondiente. La migración `0003_public_comments.sql` agrega el estado de publicación separado; los registros históricos quedan como `not_requested`. La moderación manual está documentada en `MODERATION.md`.
 
 ## WhatsApp Cloud API (recepción mínima)
 

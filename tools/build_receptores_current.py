@@ -342,8 +342,11 @@ def main():
         "normalizacion_contactos": {
             "archivo": "data/source/receptores_pjud_normalizados.csv",
             "criterio": (
-                "Conservador: no se agregan dígitos faltantes; números ambiguos "
-                "se muestran como publicados y no generan enlaces automáticos."
+                "Se conservan los datos publicados. Los teléfonos chilenos de ocho "
+                "dígitos compatibles con móvil pueden recibir una inferencia de "
+                "prefijo 9 para enlaces de contacto; es una normalización y no "
+                "modifica la fuente original. Los números ambiguos no generan "
+                "enlaces automáticos."
             ),
         },
         "conteos": {

@@ -33,8 +33,9 @@
     <p>Para operar los comentarios, derivamos criptográficamente un identificador estable mediante HMAC a partir del identificador de Google. El resultado es el único identificador que se almacena para esa finalidad. Se usa para distinguir usuarios, evitar comentarios duplicados por receptor y permitir que el mismo usuario reemplace o actualice su comentario.</p>
 
     <h2>Comentarios y protección del sitio</h2>
-    <p>Los comentarios enviados actualmente son privados. Pueden ser revisados o moderados para mantener el funcionamiento y la seguridad del servicio.</p>
-    <p>También usamos Cloudflare Turnstile para protección anti-abuso y limitación por IP para prevenir uso automatizado o excesivo. Registramos métricas de uso y analytics para entender el funcionamiento del sitio, sin almacenar la IP cruda en nuestra base de datos propia.</p>
+    <p>Los comentarios enviados sin autorización de publicación son privados. Pueden ser revisados o moderados por el operador para mantener el funcionamiento y la seguridad del servicio.</p>
+    <p>Si una persona autoriza expresamente la publicación, el comentario queda pendiente de moderación. Sólo un comentario aprobado puede aparecer de forma anónima en la ficha del receptor, junto con sus razones y una fecha aproximada. Los comentarios enviados antes de incorporar esta opción permanecen privados y no se consideran autorizados.</p>
+    <p>También usamos Cloudflare Turnstile para protección anti-abuso y limitación por IP para prevenir uso automatizado o excesivo. Nuestra analítica propia puede registrar términos de búsqueda, filtros utilizados, páginas o fichas visitadas, acciones de contacto y un identificador técnico de sesión. Estos datos se usan para entender el funcionamiento y uso del sitio; no almacenamos la IP cruda en nuestra base propia ni usamos estos datos para publicidad.</p>
 
     <h2>Uso y divulgación</h2>
     <p>No vendemos datos personales ni usamos datos de Google para publicidad. No compartimos datos de Google con terceros, salvo con proveedores técnicos necesarios para operar el sitio y prestar estas funciones.</p>
@@ -46,7 +47,7 @@
 </main>
 <footer class="footer">
   <div class="shell footer-inner">
-    <span>Receptores Chile · analítica anónima</span>
+    <span>Receptores Chile · analítica sin identificación directa</span>
     <nav><a href="/">Buscador</a><a href="/privacidad/">Privacidad</a></nav>
   </div>
 </footer>
