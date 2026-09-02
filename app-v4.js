@@ -249,7 +249,14 @@ function card(r) {
   const a = document.createElement("div");
   const name = document.createElement("h3");
   name.className = "name";
-  name.textContent = r.nombre || "Sin nombre";
+  if (r.id) {
+    const nameLink = document.createElement("a");
+    nameLink.href = canonicalUrl(r);
+    nameLink.textContent = r.nombre || "Sin nombre";
+    name.appendChild(nameLink);
+  } else {
+    name.textContent = r.nombre || "Sin nombre";
+  }
   a.appendChild(name);
   if (r.regiones?.length) {
     const p = document.createElement("p");
