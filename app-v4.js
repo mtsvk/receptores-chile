@@ -28,7 +28,12 @@ init();
 async function init() {
   bind();
   try {
-    const dataRes = await fetch(DATA_URL, {cache:"no-store"});
+    const [dataRes, metaRes, comunasRes, cortesRes] = await Promise.all([
+      fetch(DATA_URL),
+      fetch(META_URL).catch(() => null),
+      fetch(COMUNAS_URL).catch(() => null),
+      fetch(CORTES_URL).catch(() => null)
+    ]);
     if (!dataRes.ok) throw new Error(`HTTP ${dataRes.status} al cargar receptores.json`);
     const raw = await dataRes.json();
     if (!Array.isArray(raw)) throw new Error("receptores.json no contiene una lista válida");
@@ -37,17 +42,15 @@ async function init() {
 
     let meta = null;
     try {
-      const metaRes = await fetch(META_URL, {cache:"no-store"});
-      if (metaRes.ok) meta = await metaRes.json();
+      if (metaRes?.ok) meta = await metaRes.json();
     } catch (_) {}
 
     try {
-      const [comunasRes, cortesRes] = await Promise.all([fetch(COMUNAS_URL, {cache:"no-store"}), fetch(CORTES_URL, {cache:"no-store"})]);
-      if (comunasRes.ok) {
+      if (comunasRes?.ok) {
         const comunas = await comunasRes.json();
         comunaInfo = new Map(comunas.flatMap(c => [c.nombre, ...(c.variantes || [])].filter(Boolean).map(name => [norm(name), c])));
       }
-      if (cortesRes.ok) corteInfo = await cortesRes.json();
+      if (cortesRes?.ok) corteInfo = await cortesRes.json();
     } catch (_) {}
 
     fillFilters();
