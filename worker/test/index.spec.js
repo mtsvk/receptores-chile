@@ -1,6 +1,6 @@
 import { env, createExecutionContext, waitOnExecutionContext, SELF } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import worker from "../src";
+import worker, { chileDateKey } from "../src";
 
 const ORIGIN = "http://localhost:8000";
 const RECEPTOR = "rec-0001-demo";
@@ -10,10 +10,12 @@ class MockStatement {
 	bind(...args) { this.args = args; return this; }
 	async run() {
 		if (this.sql.includes("INSERT INTO votes")) this.db.votes.set(`${this.args[0]}|${this.args[1]}`, { receptor_id: this.args[0], voter_key: this.args[1], vote: 1 });
+		if (this.sql.includes("UPDATE votes")) { const row = this.db.votes.get(`${this.args[0]}|${this.args[1]}`); if (row) row.vote = 1; }
 		if (this.sql.includes("INSERT INTO private_feedback")) this.db.feedback.set(`${this.args[0]}|${this.args[1]}`, { receptor_id: this.args[0], voter_key: this.args[1], reasons_json: this.args[2], comment: this.args[3] });
+		if (this.sql.includes("WHERE count < 5")) { const key = this.args[0]; const count = this.db.rateLimits.get(key) || 0; if (count < 5) { this.db.rateLimits.set(key, count + 1); return { success: true, meta: { changes: 1 } }; } return { success: true, meta: { changes: 0 } }; }
 		return { success: true };
 	}
-	async first() { if (this.sql.includes("COUNT(*) AS recommendations")) return { recommendations: [...this.db.votes.values()].filter(row => row.receptor_id === this.args[0] && row.vote === 1).length }; return null; }
+	async first() { if (this.sql.includes("COUNT(*) AS recommendations")) return { recommendations: [...this.db.votes.values()].filter(row => row.receptor_id === this.args[0] && row.vote === 1).length }; if (this.sql.includes("SELECT vote FROM votes")) return this.db.votes.get(`${this.args[0]}|${this.args[1]}`) || null; return null; }
 	async all() { return { results: this.group(this.sql.includes("receptor_id IN") ? this.args : null) }; }
 	group(ids = null) {
 		const rows = [...this.db.votes.values()].filter(row => row.vote === 1 && (!ids || ids.includes(row.receptor_id)));
@@ -73,9 +75,31 @@ describe("receptores analytics worker", () => {
 		await recommend(db, "browser-4"); top = await worker.fetch(new Request("https://example.com/ratings/top", { headers: { Origin: ORIGIN } }), testEnv(db), createExecutionContext()); const body = await top.json();
 		expect(body.ratings[0]).toMatchObject({ receptor_id: RECEPTOR, recommendations: 5 }); expect(body.ratings[0]).not.toHaveProperty("down"); expect(body.ratings[0]).not.toHaveProperty("positive_pct");
 	});
-	it("rate limiting remains based on IP", async () => {
+	it("limits five new recommendations per day and IP", async () => {
 		vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ success: true }), { status: 200 })); const db = new MockDb();
-		for (let i = 0; i < 20; i++) await recommend(db, `browser-${i}`);
-		expect((await recommend(db, "browser-20", "192.0.2.1")).status).toBe(429); expect((await recommend(db, "browser-20", "198.51.100.1")).status).toBe(200);
+		for (let i = 0; i < 5; i++) expect((await recommend(db, `browser-${i}`)).status).toBe(200);
+		const limited = await recommend(db, "browser-5"); expect(limited.status).toBe(429); expect(await limited.json()).toEqual({ ok: false, error: "daily_recommendation_limit", limit: 5 });
+	});
+	it("idempotent repeats do not consume the daily quota", async () => {
+		vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ success: true }), { status: 200 })); const db = new MockDb();
+		for (let i = 0; i < 4; i++) await recommend(db, `browser-${i}`);
+		expect((await recommend(db, "browser-0")).status).toBe(200);
+		expect((await recommend(db, "browser-4")).status).toBe(200);
+		expect((await recommend(db, "browser-5")).status).toBe(429);
+	});
+	it("different browsers share the IP quota and different IPs do not", async () => {
+		vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ success: true }), { status: 200 })); const db = new MockDb();
+		for (let i = 0; i < 5; i++) expect((await recommend(db, `browser-${i}`, "192.0.2.1")).status).toBe(200);
+		expect((await recommend(db, "browser-other", "192.0.2.1")).status).toBe(429);
+		expect((await recommend(db, "browser-other", "198.51.100.1")).status).toBe(200);
+	});
+	it("private feedback does not consume recommendation quota", async () => {
+		vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ success: true }), { status: 200 })); const db = new MockDb();
+		expect((await request(db, "/feedback", { receptor_id: RECEPTOR, browser_id: validBrowserId("feedback"), turnstile_token: "valid-token", reasons: ["trato"], comment: "Privado" })).status).toBe(201);
+		for (let i = 0; i < 5; i++) expect((await recommend(db, `browser-${i}`)).status).toBe(200);
+	});
+	it("uses America/Santiago for the daily bucket", () => {
+		expect(chileDateKey(new Date("2026-07-15T03:30:00Z"))).toBe("2026-07-14");
+		expect(chileDateKey(new Date("2026-07-15T04:30:00Z"))).toBe("2026-07-15");
 	});
 });

@@ -13,6 +13,7 @@ function json(data, status = 200, origin = PROD_ORIGIN) { return new Response(JS
 async function hmac(secret, value) { const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]); const bytes = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(value))); return [...bytes].map(byte => byte.toString(16).padStart(2, "0")).join(""); }
 function ipOf(request) { return request.headers.get("CF-Connecting-IP") || request.headers.get("X-Forwarded-For")?.split(",")[0].trim() || "unknown"; }
 async function voterKey(browserId, secret) { return hmac(secret, browserId); }
+export function chileDateKey(date = new Date()) { const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/Santiago", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date); const values = Object.fromEntries(parts.filter(part => part.type !== "literal").map(part => [part.type, part.value])); return `${values.year}-${values.month}-${values.day}`; }
 function periodKey(date, period) { const iso = date.toISOString(); return period === "hour" ? iso.slice(0, 13) : iso.slice(0, 10); }
 async function enforceRateLimit(db, request, secret) {
   const now = new Date(), ip = ipOf(request);
@@ -45,11 +46,17 @@ async function handleVote(request, env, origin) {
   if (body.vote !== 1) return json({ ok: false, error: "invalid_vote" }, 400, origin);
   if (!env.VOTE_HMAC_SECRET) return json({ ok: false, error: "server_not_configured" }, 503, origin);
   if (!await verifyTurnstile(text(body.turnstile_token, 4096), request, env)) return json({ ok: false, error: "turnstile_failed" }, 403, origin);
-  const limit = await enforceRateLimit(env.receptores_analytics_db, request, env.VOTE_HMAC_SECRET || ""); if (!limit.ok) return json({ ok: false, error: "rate_limited", retry_after: limit.retry_after }, 429, origin);
   const key = await voterKey(browserId, env.VOTE_HMAC_SECRET || "");
+  const existing = await env.receptores_analytics_db.prepare("SELECT vote FROM votes WHERE receptor_id = ? AND voter_key = ?").bind(receptorId, key).first();
+  if (existing) {
+    await env.receptores_analytics_db.prepare("UPDATE votes SET vote = 1, updated_at = datetime('now') WHERE receptor_id = ? AND voter_key = ?").bind(receptorId, key).run();
+    return json({ ok: true, receptor_id: receptorId, ...(await ratingFor(env.receptores_analytics_db, receptorId)), recommended: true }, 200, origin);
+  }
+  const limit = await enforceRecommendationLimit(env.receptores_analytics_db, request, env.VOTE_HMAC_SECRET || ""); if (!limit.ok) return json({ ok: false, error: "daily_recommendation_limit", limit: 5 }, 429, origin);
   await env.receptores_analytics_db.prepare("INSERT INTO votes (receptor_id, voter_key, vote, created_at, updated_at) VALUES (?, ?, 1, datetime('now'), datetime('now')) ON CONFLICT(receptor_id, voter_key) DO UPDATE SET vote = 1, updated_at = datetime('now')").bind(receptorId, key).run();
   return json({ ok: true, receptor_id: receptorId, ...(await ratingFor(env.receptores_analytics_db, receptorId)), recommended: true }, 200, origin);
 }
+async function enforceRecommendationLimit(db, request, secret) { const bucketKey = await hmac(secret, `recommendation/day/IP-hash/${chileDateKey()}\n${ipOf(request)}`); const result = await db.prepare("INSERT INTO vote_rate_limits (bucket_key, period, count, updated_at) VALUES (?, 'day', 1, datetime('now')) ON CONFLICT(bucket_key) DO UPDATE SET count = count + 1, updated_at = datetime('now') WHERE count < 5").bind(bucketKey).run(); return { ok: Number(result.meta?.changes || 0) === 1 }; }
 async function handleFeedback(request, env, origin) {
   if (Number(request.headers.get("Content-Length") || 0) > 8192) return json({ ok: false, error: "payload_too_large" }, 413, origin);
   if ((request.headers.get("Content-Type") || "").split(";")[0].toLowerCase() !== "application/json") return json({ ok: false, error: "invalid_content_type" }, 415, origin);
