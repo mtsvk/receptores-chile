@@ -6,10 +6,53 @@
   const LABELS = { rapidez: "Rapidez", comunicacion: "Comunicación", disponibilidad: "Disponibilidad", cumplimiento: "Cumplimiento", trato: "Trato", honorarios: "Honorarios" };
   const DEBUG = new URLSearchParams(location.search).get("debug") === "ratings";
   const cache = new Map(), turnstileStates = new WeakMap();
-  let turnstileLoad, googleIdentityLoad, googleCredential = null;
+  let turnstileLoad, googleIdentityLoad, googleCredential = null, googleInitialized = false;
+  const googleVerificationRoots = new Set(), googleRenderStates = new WeakMap();
   const log = (...args) => DEBUG && console.log("[ratings]", ...args);
   function loadGoogleIdentity() { if (window.google?.accounts?.id) return Promise.resolve(window.google.accounts.id); if (googleIdentityLoad) return googleIdentityLoad; googleIdentityLoad = new Promise((resolve, reject) => { const script = document.createElement("script"); script.src = "https://accounts.google.com/gsi/client"; script.async = true; script.onload = () => window.google?.accounts?.id ? resolve(window.google.accounts.id) : reject(new Error("google_identity_unavailable")); script.onerror = () => reject(new Error("google_identity_load_failed")); document.head.appendChild(script); }); return googleIdentityLoad; }
-  async function googleLogin() { if (!GOOGLE_CLIENT_ID) throw new Error("google_client_id_not_configured"); const googleId = await loadGoogleIdentity(); const credential = await new Promise((resolve, reject) => { let settled = false; const finish = (callback, value) => { if (!settled) { settled = true; callback(value); } }; googleId.initialize({ client_id: GOOGLE_CLIENT_ID, callback: response => finish(resolve, response.credential) }); googleId.prompt(notification => { if (notification.isNotDisplayed?.() || notification.isSkippedMoment?.() || notification.isDismissedMoment?.()) finish(reject, new Error("google_login_not_completed")); }); }); googleCredential = credential; return { verified: true }; }
+  async function googleLogin(root) {
+    if (googleCredential) {
+      markGoogleVerified(root);
+      return { verified: true };
+    }
+    if (!GOOGLE_CLIENT_ID) throw new Error("google_client_id_not_configured");
+    const container = root.querySelector(".google-signin-container");
+    if (!container) throw new Error("google_signin_container_missing");
+    googleVerificationRoots.add(root);
+    if (googleRenderStates.has(root)) return googleRenderStates.get(root);
+    const pending = loadGoogleIdentity().then(googleId => {
+      if (!googleInitialized) {
+        googleId.initialize({ client_id: GOOGLE_CLIENT_ID, callback: response => {
+          if (!response?.credential) {
+            googleVerificationRoots.forEach(showGoogleError);
+            return;
+          }
+          googleCredential = response.credential;
+          googleVerificationRoots.forEach(markGoogleVerified);
+        } });
+        googleInitialized = true;
+      }
+      container.replaceChildren();
+      googleId.renderButton(container, { type: "standard", theme: "outline", size: "large", text: "continue_with", shape: "rectangular" });
+    }).catch(error => {
+      showGoogleError(root);
+      debugError(error);
+      googleRenderStates.delete(root);
+      throw error;
+    });
+    googleRenderStates.set(root, pending);
+    return pending;
+  }
+  function markGoogleVerified(root) {
+    const container = root.querySelector(".google-signin-container");
+    const status = root.querySelector("[data-google-status]");
+    if (container) container.hidden = true;
+    if (status) status.textContent = "✓ Verificado con Google";
+  }
+  function showGoogleError(root) {
+    const status = root.querySelector("[data-google-status]");
+    if (status) status.textContent = "No fue posible cargar la verificación con Google. Intenta nuevamente.";
+  }
   function browserId() { try { let id = localStorage.getItem("receptores_browser_id"); if (!/^[A-Za-z0-9_-]{16,128}$/.test(id || "")) { id = crypto.randomUUID().replaceAll("-", ""); localStorage.setItem("receptores_browser_id", id); } return id; } catch { return ""; } }
   function myVote(id) { try { return Number(localStorage.getItem(`receptores_vote:${id}`)) || 0; } catch { return 0; } }
   function markRecommended(id) { try { localStorage.setItem(`receptores_recommendation:${id}`, "1"); } catch {} }
@@ -17,8 +60,8 @@
   function debugError(error) { log("error", error); }
   function createWidget(id) {
     const root = document.createElement("section"); root.className = "rating-widget"; root.dataset.receptorId = id; root.setAttribute("aria-label", "Recomendación y comentario privado");
-    root.innerHTML = `<div class="rating-title">Recomendaciones</div><div class="rating-summary" aria-live="polite">Cargando recomendaciones…</div><div class="rating-actions"><button type="button" data-recommend aria-label="Recomendar receptor" aria-pressed="false">Recomendar</button><button type="button" data-feedback-toggle>Enviar comentario privado</button></div><div class="rating-status" role="status" aria-live="polite"></div><p class="rating-note">Las recomendaciones son anónimas. Los comentarios son privados.</p><form class="rating-feedback" hidden><div class="google-verification"><p>Para enviar comentarios debes verificarte con Google.</p><button type="button" data-google-login>Continuar con Google</button><span data-google-status role="status"></span></div><fieldset><legend>¿Qué influyó en tu experiencia?</legend>${REASONS.map(reason => `<label><input type="checkbox" name="reason" value="${reason}"> ${LABELS[reason]}</label>`).join("")}</fieldset><label class="rating-comment">Comentario opcional<textarea name="comment" maxlength="300" rows="3"></textarea></label><div class="turnstile-slot"></div><button type="submit">Enviar comentario</button><span class="feedback-message" role="status"></span></form>`;
-    root.addEventListener("click", event => { if (event.target.closest("button[data-recommend]")) chooseRecommend(root); if (event.target.closest("button[data-feedback-toggle]")) toggleFeedback(root); if (event.target.closest("button[data-google-login]")) startGoogleLogin(root); });
+    root.innerHTML = `<div class="rating-title">Recomendaciones</div><div class="rating-summary" aria-live="polite">Cargando recomendaciones…</div><div class="rating-actions"><button type="button" data-recommend aria-label="Recomendar receptor" aria-pressed="false">Recomendar</button><button type="button" data-feedback-toggle>Enviar comentario privado</button></div><div class="rating-status" role="status" aria-live="polite"></div><p class="rating-note">Las recomendaciones son anónimas. Los comentarios son privados.</p><form class="rating-feedback" hidden><div class="google-verification"><p>Para enviar comentarios debes verificarte con Google.</p><div class="google-signin-container"></div><span data-google-status role="status"></span></div><fieldset><legend>¿Qué influyó en tu experiencia?</legend>${REASONS.map(reason => `<label><input type="checkbox" name="reason" value="${reason}"> ${LABELS[reason]}</label>`).join("")}</fieldset><label class="rating-comment">Comentario opcional<textarea name="comment" maxlength="300" rows="3"></textarea></label><div class="turnstile-slot"></div><button type="submit">Enviar comentario</button><span class="feedback-message" role="status"></span></form>`;
+    root.addEventListener("click", event => { if (event.target.closest("button[data-recommend]")) chooseRecommend(root); if (event.target.closest("button[data-feedback-toggle]")) toggleFeedback(root); });
     root.querySelector("form").addEventListener("submit", event => { event.preventDefault(); requestSubmission(root, submitFeedback); });
     return root;
   }
@@ -32,8 +75,7 @@
   function setStatus(root, text, type) { root.querySelector(type === "feedback" ? ".feedback-message" : ".rating-status").textContent = text; }
   function setRecommendationLoading(root, loading) { const button = root.querySelector("button[data-recommend]"); button.disabled = loading; button.setAttribute("aria-busy", String(loading)); if (loading) button.innerHTML = '<span class="rating-spinner" aria-hidden="true"></span>Procesando…'; else button.textContent = isRecommended(root.dataset.receptorId) ? "Recomendado" : "Recomendar"; }
   function chooseRecommend(root) { const state = turnstileState(root); if (state.submitting || isRecommended(root.dataset.receptorId)) return; setRecommendationLoading(root, true); requestSubmission(root, submitRecommendation); }
-  function toggleFeedback(root) { const form = root.querySelector(".rating-feedback"); form.hidden = !form.hidden; if (!form.hidden) root.querySelector(".feedback-message").textContent = ""; }
-  async function startGoogleLogin(root) { const button = root.querySelector("button[data-google-login]"), status = root.querySelector("[data-google-status]"); button.disabled = true; status.textContent = ""; try { await googleLogin(); status.textContent = "✓ Verificado con Google"; } catch (error) { status.textContent = "No fue posible verificarte con Google."; debugError(error); } finally { button.disabled = false; } }
+  function toggleFeedback(root) { const form = root.querySelector(".rating-feedback"); form.hidden = !form.hidden; if (!form.hidden) { root.querySelector(".feedback-message").textContent = ""; googleLogin(root).catch(() => {}); } }
   function loadTurnstile() { if (window.turnstile) return Promise.resolve(); if (turnstileLoad) return turnstileLoad; turnstileLoad = new Promise((resolve, reject) => { const script = document.createElement("script"); script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js"; script.async = true; script.onload = resolve; script.onerror = () => reject(new Error("turnstile_load_failed")); document.head.appendChild(script); }); return turnstileLoad; }
   async function ensureTurnstile(root) {
     const key = window.RECEPTORES_TURNSTILE_SITE_KEY || "", slot = root.querySelector(".turnstile-slot"), state = turnstileState(root);
