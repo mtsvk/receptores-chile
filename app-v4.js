@@ -12,9 +12,9 @@ const REGION_ORDER = ["Arica y Parinacota","Tarapacá","Antofagasta","Atacama","
 
 const $ = id => document.getElementById(id);
 const els = {
-  q:$("q"), clear:$("clear"), corte:$("corte"), comuna:$("comuna"),
+  q:$("q"), clear:$("clear"), corte:$("corte"), region:$("region"), comuna:$("comuna"),
   contacto:$("contacto"), reset:$("reset"), status:$("status"),
-  dataset:$("dataset"), list:$("list"), empty:$("empty"),
+  dataset:$("dataset"), list:$("list"), empty:$("empty"), filterSummary:$("filterSummary"),
   moreWrap:$("moreWrap"), more:$("more"), error:$("error")
 };
 
@@ -83,7 +83,11 @@ function bind() {
     apply();
     els.q.focus();
   });
-  [els.corte, els.comuna, els.contacto].forEach(el => el.addEventListener("change", () => {
+  [els.corte, els.region, els.comuna, els.contacto].forEach(el => el.addEventListener("change", () => {
+    if (el === els.region) {
+      populateComunaOptions();
+      els.comuna.value = "";
+    }
     visible = PAGE;
     apply();
   }));
@@ -91,6 +95,7 @@ function bind() {
     els.q.value = "";
     els.clear.hidden = true;
     els.corte.value = "";
+    els.region.value = "";
     els.comuna.value = "";
     els.contacto.value = "";
     visible = PAGE;
@@ -132,7 +137,8 @@ function prepare(r) {
     estimated: flags.some(f => ESTIMATED.has(f)),
     search: norm(searchBits.join(" ")),
     corteKey: norm(r.corte || ""),
-    comunaKeys: new Set(comunas.map(norm))
+    comunaKeys: new Set(comunas.map(norm)),
+    regionKeys: new Set(arr(r.regiones).map(norm))
   };
 }
 
@@ -177,7 +183,15 @@ function buildPhones(r) {
 
 function fillFilters() {
   options(els.corte, unique(rows.map(r => r.corte).filter(Boolean)).sort(compareCourts), x => x.replace(/^Corte de Apelaciones de\s+/i,""));
-  groupedComunaOptions(els.comuna, unique(rows.flatMap(r => r.comunas)));
+  options(els.region, unique(rows.flatMap(r => r.regiones)).sort((a,b) => regionRank(a) - regionRank(b) || compareGeographic(a,b)), x => x);
+  populateComunaOptions();
+}
+
+function populateComunaOptions() {
+  const selectedRegion = norm(els.region.value);
+  els.comuna.replaceChildren(new Option("Todas las comunas", ""));
+  const values = unique(rows.filter(r => !selectedRegion || r.regionKeys.has(selectedRegion)).flatMap(r => r.comunas));
+  groupedComunaOptions(els.comuna, values);
 }
 
 function options(select, values, label) {
@@ -209,11 +223,13 @@ function renderMeta(meta) {
 function apply(updateUrl = true) {
   const tokens = norm(els.q.value).split(/\s+/).filter(Boolean);
   const corte = norm(els.corte.value);
+  const region = norm(els.region.value);
   const comuna = norm(els.comuna.value);
   const contacto = els.contacto.value;
 
   filtered = rows.filter(r => {
     if (corte && r.corteKey !== corte) return false;
+    if (region && !r.regionKeys.has(region)) return false;
     if (comuna && !r.comunaKeys.has(comuna)) return false;
     if (contacto === "email" && !r.emails.length) return false;
     if (contacto === "phone" && !r.phones.length) return false;
@@ -230,6 +246,9 @@ function render() {
   const shown = filtered.slice(0, visible);
   els.list.replaceChildren(...shown.map(card));
   els.empty.hidden = filtered.length !== 0;
+  const active = [els.q.value.trim(), els.corte.value, els.region.value, els.comuna.value, els.contacto.value].filter(Boolean);
+  els.filterSummary.hidden = !active.length;
+  els.filterSummary.textContent = active.join(" · ");
   els.moreWrap.hidden = shown.length >= filtered.length;
   if (!filtered.length) {
     els.status.textContent = "0 receptores";
@@ -258,14 +277,16 @@ function card(r) {
     name.textContent = r.nombre || "Sin nombre";
   }
   a.appendChild(name);
+  const role = document.createElement("p");
+  role.className = "role";
+  role.textContent = "Receptor judicial";
+  a.appendChild(role);
   if (r.regiones?.length) {
     const p = document.createElement("p");
     p.className = "sub";
     p.textContent = sortRegions(r.regiones).join(" · ");
     a.appendChild(p);
   }
-  a.appendChild(details(r));
-  if (r.id && window.ReceptoresRatings) a.appendChild(window.ReceptoresRatings.widget(r.id));
 
   const b = document.createElement("div");
   const tribunal = document.createElement("p");
@@ -278,34 +299,41 @@ function card(r) {
     court.textContent = r.corte;
     b.appendChild(court);
   }
+  const location = [r.comunas.join(" · "), sortRegions(r.regiones).join(" · ")].filter(Boolean).join(" · ");
+  if (location) {
+    const place = document.createElement("p");
+    place.className = "location";
+    place.textContent = location;
+    b.appendChild(place);
+  }
+  if (r.id && window.ReceptoresRatings) b.appendChild(window.ReceptoresRatings.widget(r.id, { compact:true }));
   const c = document.createElement("div");
   c.className = "contacts";
-  r.emails.slice(0,2).forEach(email => {
-    const link = document.createElement("a");
-    link.href = `mailto:${email}`;
-    link.textContent = email;
-    c.appendChild(link);
-  });
-
-  r.phones.forEach(p => {
-    if (!p.href) return;
-    const link = document.createElement("a");
-    link.className = "phone";
-    link.href = p.href;
-    link.textContent = p.display;
-    c.appendChild(link);
-  });
-
   const wa = r.phones.find(p => p.whatsapp && p.digits);
   const actions = document.createElement("div");
-  actions.className = "actions";
+  actions.className = "actions contact-actions";
   if (wa) {
     const link = document.createElement("a");
     link.className = "contact-link";
     link.href = `https://wa.me/56${wa.digits}`;
     link.target = "_blank";
     link.rel = "noopener noreferrer";
-    link.textContent = "WhatsApp ↗";
+    link.textContent = "WhatsApp";
+    actions.appendChild(link);
+  }
+  const phone = r.phones.find(p => p.href);
+  if (phone) {
+    const link = document.createElement("a");
+    link.className = "contact-link";
+    link.href = phone.href;
+    link.textContent = "Llamar";
+    actions.appendChild(link);
+  }
+  if (r.emails[0]) {
+    const link = document.createElement("a");
+    link.className = "contact-link";
+    link.href = `mailto:${r.emails[0]}`;
+    link.textContent = "Correo";
     actions.appendChild(link);
   }
   if (r.id) {
@@ -319,7 +347,7 @@ function card(r) {
     const detailLink = document.createElement("a");
     detailLink.className = "action-link";
     detailLink.href = canonicalUrl(r);
-    detailLink.textContent = "Ver ficha";
+    detailLink.textContent = "Ver ficha completa →";
     actions.appendChild(detailLink);
 
     const button = document.createElement("button");
@@ -363,6 +391,7 @@ function saveUrl() {
   u.search = "";
   if (els.q.value.trim()) u.searchParams.set("q", els.q.value.trim());
   if (els.corte.value) u.searchParams.set("corte", els.corte.value);
+  if (els.region.value) u.searchParams.set("region", els.region.value);
   if (els.comuna.value) u.searchParams.set("comuna", els.comuna.value);
   if (els.contacto.value) u.searchParams.set("contacto", els.contacto.value);
   history.replaceState(null, "", u.pathname + u.search + u.hash);
@@ -373,6 +402,8 @@ function restoreUrl() {
   els.q.value = u.searchParams.get("q") || "";
   els.clear.hidden = !els.q.value;
   setSelect(els.corte, u.searchParams.get("corte"));
+  setSelect(els.region, u.searchParams.get("region"));
+  populateComunaOptions();
   setSelect(els.comuna, u.searchParams.get("comuna"));
   setSelect(els.contacto, u.searchParams.get("contacto"));
 }
