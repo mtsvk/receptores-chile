@@ -41,3 +41,12 @@ button,a,input,select,summary{transition:color 150ms ease,background-color 150ms
 @media(max-width:780px){.intro{padding-top:50px}.card{padding:22px;gap:18px}}
 @media(max-width:520px){.topbar{height:62px}.brand{font-size:17px}.intro{padding:42px 0 28px}.intro h1{font-size:42px;line-height:1.06}.intro p{font-size:15px}.searchrow input{height:62px;font-size:16px}.filters{padding:17px}.card{padding:20px;border-radius:14px}.name{font-size:21px}.contact-actions .contact-link{height:39px;flex:0 1 auto}.contact-actions .contact-link:nth-child(2),.contact-actions .contact-link:nth-child(3){background:#fff}.method{margin-top:58px}}
 @media(prefers-reduced-motion:reduce){button,a,input,select,summary,.card{transition:none}.card:hover{transform:none}}
+
+/* Segunda iteración: directorio editorial, con densidad controlada. */
+:root{--serif:"Source Serif 4",Georgia,"Times New Roman",serif;--sans:"Manrope",Inter,ui-sans-serif,system-ui,sans-serif}
+body{font-family:var(--sans)}.brand,.intro h1,.results-head h2,.name{font-family:var(--serif)}
+.intro{max-width:840px}.intro h1{max-width:660px;line-height:1.02}.intro p{max-width:610px}.ranking-link{display:none}
+.searchrow input{height:64px;border-radius:13px}.filters-panel summary{font-weight:700}
+.card{display:grid;grid-template-columns:minmax(0,1.08fr) minmax(0,1fr) minmax(250px,.9fr);gap:28px;padding:24px 26px;border-radius:16px}.card-main,.card-jurisdiction,.card-footer{min-width:0}.name{font-size:23px;line-height:1.16}.role{margin-top:7px}.card-jurisdiction{padding-top:2px}.court{font-size:13px;line-height:1.4;color:var(--accent);font-weight:650}.tribunal{margin-top:6px;font-size:14px;line-height:1.45}.location{margin-top:15px;font-size:12px}.coverage-count{margin-top:4px;color:var(--muted);font-size:11px}.card-footer{display:flex;flex-direction:column;align-items:flex-start;gap:12px}.card-footer .actions{margin-top:0}.card .rating-widget{width:100%;margin-top:auto}.card .action-button{order:2}.card .action-link{order:3}.contact-actions .contact-link{min-height:40px}
+@media(max-width:780px){.card{grid-template-columns:minmax(0,1.1fr) minmax(0,1fr)}.card-footer{grid-column:1/-1;border-top:1px solid var(--line);padding-top:16px;display:block}.card-footer .rating-widget{margin-top:16px}}
+@media(max-width:520px){.card{grid-template-columns:1fr;padding:20px}.card-footer{grid-column:auto}.name{font-size:22px}.intro h1{font-size:42px}.card-footer .actions{gap:7px}.contact-actions .contact-link{padding-inline:12px}}

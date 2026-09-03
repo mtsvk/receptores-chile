@@ -83,6 +83,14 @@ def infer_contact_name(source: str) -> dict:
     return {"nombres_contacto": names, "apellidos_contacto": surnames, "nombre_contacto": f"{names} {surnames}", "confianza": confidence}
 
 
+def display_name(row: dict, audit_row: dict | None = None) -> str:
+    """Nombre visible canónico; nunca modifica el nombre fuente ni el slug."""
+    source = str(row.get("nombre_original") or row.get("nombre") or "").strip()
+    inferred = infer_contact_name(source)
+    override = str((audit_row or {}).get("nombre_override") or "").strip()
+    return override or inferred.get("nombre_contacto") or source or "Receptor judicial"
+
+
 def load_contact_audit():
     if not CONTACT_NAMES_FILE.exists():
         return {}
@@ -220,7 +228,7 @@ def collect_emails(row: dict):
 
 
 def brief_description(row: dict) -> str:
-    name = str(row.get("nombre") or "Receptor judicial")
+    name = display_name(row)
     place = str(row.get("tribunal_fuente") or row.get("corte") or "").strip()
     if place:
         text = f"{name}, receptor judicial en {place}. Datos de contacto, adscripción y cobertura. Fuente: Poder Judicial."
@@ -326,11 +334,14 @@ footer{border-top:1px solid var(--line);padding:22px 0 40px;font-size:13px;color
 :root{--bg:#f4f2ed;--paper:#fff;--ink:#171716;--muted:#706f69;--line:#ddd9d1;--accent:#263b50;--accent-hover:#182b3d;--soft:#eceff1}
 body{background:var(--bg);color:var(--ink)}.shell{width:min(calc(100% - 40px),960px)}header{background:rgba(255,255,255,.82);border-bottom-color:rgba(221,217,209,.85)}.brand{font-family:Georgia,"Times New Roman",ui-serif,serif;font-size:18px;letter-spacing:-.02em}.back{padding:8px 0}.eyebrow{font-size:10px;letter-spacing:.13em;text-transform:uppercase;font-weight:700}main{padding:76px 0 86px}h1{font-family:Georgia,"Times New Roman",ui-serif,serif;font-size:clamp(42px,6vw,58px);font-weight:500;line-height:1.06;letter-spacing:-.045em;max-width:780px;margin-bottom:18px}.lead{font-size:17px;color:#4f4f4a;line-height:1.5;margin-bottom:48px}.section{border-bottom-color:var(--line)}.profile-contact{padding:0 0 30px;margin:0}.profile-contact h2,.public-comments h2{font-family:Georgia,"Times New Roman",ui-serif,serif;font-size:24px;font-weight:500;letter-spacing:-.02em;text-transform:none;color:var(--ink);margin-bottom:18px}.profile-contact-grid{gap:32px}.profile-contact h3{font:700 10px/1.2 Inter,system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}.profile-contact .contact-list{font-size:15px;line-height:1.6}.profile-contact .contact-actions{margin-top:24px}.profile-contact .contact-actions button{border-color:#c6c4bd;border-radius:10px;min-height:40px;padding:8px 14px}.rating-widget{border-top:0;padding-top:0;margin-top:42px}.rating-title{font-size:10px;letter-spacing:.13em}.rating-summary{font-size:15px}.rating-actions button,.rating-feedback button{border-color:#c6c4bd;border-radius:9px}.rating-actions button[data-recommend]{background:var(--accent);border-color:var(--accent)}.rating-actions button[data-recommend]:hover{background:var(--accent-hover);border-color:var(--accent-hover)}.rating-note{max-width:620px;line-height:1.6}.public-comments{margin-top:52px;padding-top:30px;border-top:1px solid var(--line)}.public-comments h2{font-size:28px}.public-comment{padding:22px 0;border-top-color:var(--line)}.public-comment-text{font-size:18px;line-height:1.65;max-width:700px}.public-comment-reasons{font-size:11px;letter-spacing:.04em}.public-comment-meta,.public-comments-note{font-size:12px;line-height:1.55}.grid{margin-top:52px}.grid .section h2{font:700 10px/1.2 Inter,system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase}.grid .section p{font-size:16px;line-height:1.55}.notice{background:#f8f7f3;border-color:var(--line);border-radius:10px}.meta{font-size:12px}footer{padding:34px 0 48px;background:rgba(255,255,255,.35)}
 @media(max-width:650px){main{padding-top:46px}.profile-contact-grid{gap:22px}.lead{margin-bottom:36px}.grid{margin-top:36px}.public-comments{margin-top:40px}.public-comment-text{font-size:17px}}
+ :root{--serif:"Source Serif 4",Georgia,"Times New Roman",serif;--sans:"Manrope",Inter,ui-sans-serif,system-ui,sans-serif}html{font-family:var(--sans)}.brand,h1,.profile-contact h2,.public-comments h2{font-family:var(--serif)}h1{max-width:700px;line-height:1.03}.profile-contact{margin-top:0}.profile-contact .contact-actions{margin-top:22px}.grid{margin-top:38px}.coverage-section details{margin-top:14px}.coverage-section details summary{cursor:pointer;color:var(--accent);font-size:13px}.coverage-section details>ul{margin-top:12px}.rating-widget{border-top:1px solid var(--line);padding-top:24px;margin-top:42px}.public-comments{margin-top:48px}.public-comments-note{max-width:680px}
+@media(max-width:650px){h1{font-size:clamp(40px,12vw,52px)}.grid{margin-top:30px}.rating-widget{margin-top:34px}}
 """
 
 
 def render_receptor_page(row: dict, slug: str, contact_audit: dict) -> str:
-    name = str(row.get("nombre") or row.get("nombre_original") or "Receptor judicial")
+    audit_row = contact_audit.get(slug, {})
+    name = display_name(row, audit_row)
     corte = str(row.get("corte") or "").strip()
     tribunal = str(row.get("tribunal_fuente") or "").strip()
     territorio = str(row.get("territorio") or "").strip()
@@ -359,6 +370,9 @@ def render_receptor_page(row: dict, slug: str, contact_audit: dict) -> str:
 <meta name="description" content="{esc(description)}">
 <meta name="robots" content="index,follow">
 <link rel="canonical" href="{esc(canonical)}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Source+Serif+4:wght@500;600&display=swap" rel="stylesheet">
 <meta name="receptor-id" content="{esc(row.get('id'))}">
 <meta property="og:type" content="profile">
 <meta property="og:title" content="{esc(title)}">
@@ -376,14 +390,14 @@ def render_receptor_page(row: dict, slug: str, contact_audit: dict) -> str:
 <h1>{esc(name)}</h1>
 <p class="lead">{esc(corte or "Chile")}{f" · {esc(tribunal)}" if tribunal and tribunal != corte else ""}</p>
 <section class="section full profile-contact"><h2>Contacto</h2><div class="profile-contact-grid"><div><h3>Teléfono</h3>{render_phone_rows(phones)}</div><div><h3>Correo</h3>{render_email_rows(emails)}</div></div>{render_vcard_action(row, slug, canonical, contact_audit)}</section>
-{render_rating_widget(str(row.get("id") or ""))}
-{render_public_comments(str(row.get("id") or ""))}
 <div class="grid">
 <section class="section"><h2>Corte</h2><p>{esc(corte or "No informada")}</p></section>
 <section class="section"><h2>Tribunal / adscripción</h2><p>{esc(tribunal or "No informado")}</p></section>
-<section class="section full"><h2>Comunas cubiertas</h2>{render_list(comunas, "Cobertura comunal no informada.")}</section>
+<section class="section full coverage-section"><h2>Cobertura territorial</h2>{f'<p>Cobertura en {len(comunas)} comunas.</p><details><summary>Ver comunas</summary>{render_list(comunas, "Cobertura comunal no informada.")}</details>' if comunas else '<p>Cobertura comunal no informada.</p>'}</section>
 <section class="section full"><h2>Región</h2>{render_list(regiones, "Región no informada.")}</section>
 </div>
+{render_rating_widget(str(row.get("id") or ""))}
+{render_public_comments(str(row.get("id") or ""))}
 <div class="notice">Directorio no oficial. Los datos provienen de información publicada por el Poder Judicial. Verifica la información directamente antes de encargar una diligencia.</div>
 <p class="meta">Fuente: {esc(row.get("fuente") or "Poder Judicial")} · Actualización: {esc(row.get("fecha_fuente") or "sin fecha informada")}</p>
 </main>
@@ -392,10 +406,10 @@ def render_receptor_page(row: dict, slug: str, contact_audit: dict) -> str:
 <script defer src="/analytics.js?v=20260901-3"></script>{render_rating_scripts()}</body></html>'''
 
 
-def render_directory(rows_with_slugs) -> str:
+def render_directory(rows_with_slugs, contact_audit) -> str:
     items = []
-    for row, slug in sorted(rows_with_slugs, key=lambda pair: str(pair[0].get("nombre") or "").casefold()):
-        name = str(row.get("nombre") or row.get("nombre_original") or "Receptor judicial")
+    for row, slug in sorted(rows_with_slugs, key=lambda pair: display_name(pair[0], contact_audit.get(pair[1], {})).casefold()):
+        name = display_name(row, contact_audit.get(slug, {}))
         corte = str(row.get("corte") or "").strip()
         items.append(f'<li><a href="/receptores/{esc(slug)}.html">{esc(name)}</a>' + (f'<span>{esc(corte)}</span>' if corte else "") + '</li>')
 
@@ -404,6 +418,7 @@ def render_directory(rows_with_slugs) -> str:
     return f'''<!doctype html>
 <html lang="es-CL"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{esc(title)}</title><meta name="description" content="{esc(description)}"><meta name="robots" content="index,follow"><link rel="canonical" href="{BASE_URL}/receptores/">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Source+Serif+4:wght@500;600&display=swap" rel="stylesheet">
 <style>{PAGE_CSS}
 .directory{{list-style:none;margin:34px 0 0;padding:0;border-top:1px solid var(--line)}}.directory li{{display:grid;grid-template-columns:minmax(0,1fr) minmax(180px,.6fr);gap:22px;padding:13px 0;border-bottom:1px solid var(--line);align-items:baseline}}.directory a{{font-weight:600}}.directory span{{font-size:13px;color:var(--muted)}}@media(max-width:650px){{.directory li{{grid-template-columns:1fr;gap:3px}}}}
 </style></head><body>
@@ -413,8 +428,10 @@ def render_directory(rows_with_slugs) -> str:
 <script defer src="/analytics.js?v=20260901-3"></script></body></html>'''
 
 
-def render_ranking_page() -> str:
-    return f"""<!doctype html><html lang="es-CL"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ranking de receptores judiciales | {SITE_NAME}</title><meta name="description" content="Ranking público de receptores judiciales en Chile según recomendaciones anónimas."><meta name="robots" content="index,follow"><link rel="canonical" href="{BASE_URL}/ranking/"><style>{PAGE_CSS}.ranking{{list-style:none;padding:0;margin:26px 0;border-top:1px solid var(--line)}}.ranking li{{display:grid;grid-template-columns:2fr 1fr .7fr .7fr;gap:14px;padding:14px 0;border-bottom:1px solid var(--line);align-items:baseline}}.ranking small{{color:var(--muted)}}.ranking-note{{font-size:14px;color:var(--muted);max-width:680px}}@media(max-width:650px){{.ranking li{{grid-template-columns:1fr 1fr}}}}</style></head><body><header><div class="shell header-inner"><a class="brand" href="/">Receptores Chile</a><a class="back" href="/">Buscador</a></div></header><main class="shell"><p class="eyebrow">Recomendaciones anónimas</p><h1>Ranking de recomendaciones</h1><p class="lead">El orden prioriza la cantidad de recomendaciones recibidas.</p><p class="ranking-note">Las recomendaciones reflejan interacciones de usuarios del sitio y no constituyen una evaluación profesional ni verifican una relación previa con el receptor.</p><ul id="ranking" class="ranking"><li>Cargando ranking…</li></ul></main><footer><div class="shell"><span>Receptores Chile</span><span><a href="/privacidad/">Privacidad</a> · <a href="/">Volver al buscador</a></span></div></footer><script>window.RECEPTORES_TURNSTILE_SITE_KEY="0x4AAAAAAEkQy8FIbatMffjR";</script><script src="/ratings.js?v=20260902-7" defer></script><script>const API="https://receptores-analytics.adminbase100.workers.dev";fetch("/data/receptores.json").then(r=>r.json()).then(rows=>fetch(API+"/ratings/top?limit=100").then(r=>r.json()).then(data=>{{const byId=new Map(rows.map(r=>[r.id,r]));const el=document.getElementById("ranking");const ratings=Array.isArray(data.ratings)?data.ratings:[];el.replaceChildren(...ratings.map(item=>{{const r=byId.get(item.receptor_id)||{{}};const li=document.createElement("li");const name=document.createElement("span");const link=document.createElement("a");link.href="/receptores/"+String(r.id||item.receptor_id).replace(/^rec-\\d+-/,"")+".html";link.textContent=r.nombre||item.receptor_id;name.appendChild(link);const place=document.createElement("small");place.textContent=r.corte||r.tribunal_fuente||"Adscripción no informada";const count=document.createElement("span");count.textContent=String(item.recommendations)+" recomendaciones";li.append(name,place,count);return li}}));if(!ratings.length)el.textContent="Aún no hay receptores con 5 recomendaciones.";}})).catch(()=>{{document.getElementById("ranking").textContent="No fue posible cargar el ranking.";}});</script></body></html>"""
+def render_ranking_page(rows_with_slugs, contact_audit) -> str:
+    names = {str(row.get("id") or ""): display_name(row, contact_audit.get(slug, {})) for row, slug in rows_with_slugs}
+    names_json = json.dumps(names, ensure_ascii=False, separators=(",", ":"))
+    return f"""<!doctype html><html lang="es-CL"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ranking de receptores judiciales | {SITE_NAME}</title><meta name="description" content="Ranking público de receptores judiciales en Chile según recomendaciones anónimas."><meta name="robots" content="index,follow"><link rel="canonical" href="{BASE_URL}/ranking/"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Source+Serif+4:wght@500;600&display=swap" rel="stylesheet"><style>{PAGE_CSS}.ranking{{list-style:none;padding:0;margin:26px 0;border-top:1px solid var(--line)}}.ranking li{{display:grid;grid-template-columns:2fr 1fr .7fr .7fr;gap:14px;padding:14px 0;border-bottom:1px solid var(--line);align-items:baseline}}.ranking small{{color:var(--muted)}}.ranking-note{{font-size:14px;color:var(--muted);max-width:680px}}@media(max-width:650px){{.ranking li{{grid-template-columns:1fr 1fr}}}}</style></head><body><header><div class="shell header-inner"><a class="brand" href="/">Receptores Chile</a><a class="back" href="/">Buscador</a></div></header><main class="shell"><p class="eyebrow">Recomendaciones anónimas</p><h1>Ranking de recomendaciones</h1><p class="lead">El orden prioriza la cantidad de recomendaciones recibidas.</p><p class="ranking-note">Las recomendaciones reflejan interacciones de usuarios del sitio y no constituyen una evaluación profesional ni verifican una relación previa con el receptor.</p><ul id="ranking" class="ranking"><li>Cargando ranking…</li></ul></main><footer><div class="shell"><span>Receptores Chile</span><span><a href="/privacidad/">Privacidad</a> · <a href="/">Volver al buscador</a></span></div></footer><script>window.RECEPTORES_TURNSTILE_SITE_KEY="0x4AAAAAAEkQy8FIbatMffjR";</script><script src="/ratings.js?v=20260902-7" defer></script><script>const API="https://receptores-analytics.adminbase100.workers.dev";const DISPLAY_NAMES={names_json};fetch("/data/receptores.json").then(r=>r.json()).then(rows=>fetch(API+"/ratings/top?limit=100").then(r=>r.json()).then(data=>{{const byId=new Map(rows.map(r=>[r.id,r]));const el=document.getElementById("ranking");const ratings=Array.isArray(data.ratings)?data.ratings:[];el.replaceChildren(...ratings.map(item=>{{const r=byId.get(item.receptor_id)||{{}};const li=document.createElement("li");const name=document.createElement("span");const link=document.createElement("a");link.href="/receptores/"+String(r.id||item.receptor_id).replace(/^rec-\\d+-/,"")+".html";link.textContent=DISPLAY_NAMES[item.receptor_id]||item.receptor_id;name.appendChild(link);const place=document.createElement("small");place.textContent=r.corte||r.tribunal_fuente||"Adscripción no informada";const count=document.createElement("span");count.textContent=String(item.recommendations)+" recomendaciones";li.append(name,place,count);return li}}));if(!ratings.length)el.textContent="Aún no hay receptores con 5 recomendaciones.";}})).catch(()=>{{document.getElementById("ranking").textContent="No fue posible cargar el ranking.";}});</script></body></html>"""
 
 def write_sitemap(rows_with_slugs, today: str):
     urls = [(f"{BASE_URL}/", today), (f"{BASE_URL}/receptores/", today), (f"{BASE_URL}/ranking/", today)]
@@ -451,9 +468,9 @@ def main():
         old.unlink()
     for row, slug in rows_with_slugs:
         (OUT_DIR / f"{slug}.html").write_text(render_receptor_page(row, slug, contact_audit[slug]), encoding="utf-8")
-    (OUT_DIR / "index.html").write_text(render_directory(rows_with_slugs), encoding="utf-8")
+    (OUT_DIR / "index.html").write_text(render_directory(rows_with_slugs, contact_audit), encoding="utf-8")
     RANKING_DIR.mkdir(parents=True, exist_ok=True)
-    ranking_html = render_ranking_page()
+    ranking_html = render_ranking_page(rows_with_slugs, contact_audit)
     (RANKING_DIR / "index.html").write_text(ranking_html, encoding="utf-8")
 
     today = dt.date.today().isoformat()

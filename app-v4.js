@@ -131,6 +131,7 @@ function prepare(r) {
     emails,
     flags,
     phones,
+    displayName: contactOverride.nombre_override || inferredContact.nombre_contacto || r.nombre || r.nombre_original || "Sin nombre",
     contactName: contactOverride.nombre_override || inferredContact.nombre_contacto,
     contactGivenNames: contactOverride.nombres_override || inferredContact.nombres_contacto,
     contactSurnames: contactOverride.apellidos_override || inferredContact.apellidos_contacto,
@@ -266,49 +267,51 @@ function card(r) {
   if (r.id) article.id = r.id;
 
   const a = document.createElement("div");
+  a.className = "card-main";
   const name = document.createElement("h3");
   name.className = "name";
   if (r.id) {
     const nameLink = document.createElement("a");
     nameLink.href = canonicalUrl(r);
-    nameLink.textContent = r.nombre || "Sin nombre";
+    nameLink.textContent = r.displayName;
     name.appendChild(nameLink);
   } else {
-    name.textContent = r.nombre || "Sin nombre";
+    name.textContent = r.displayName;
   }
   a.appendChild(name);
   const role = document.createElement("p");
   role.className = "role";
   role.textContent = "Receptor judicial";
   a.appendChild(role);
-  if (r.regiones?.length) {
-    const p = document.createElement("p");
-    p.className = "sub";
-    p.textContent = sortRegions(r.regiones).join(" · ");
-    a.appendChild(p);
-  }
-
   const b = document.createElement("div");
-  const tribunal = document.createElement("p");
-  tribunal.className = "tribunal";
-  tribunal.textContent = r.tribunal_fuente || r.territorio || "Adscripción no informada";
-  b.appendChild(tribunal);
-  if (r.corte && r.corte !== r.tribunal_fuente) {
+  b.className = "card-jurisdiction";
+  if (r.corte) {
     const court = document.createElement("p");
     court.className = "court";
     court.textContent = r.corte;
     b.appendChild(court);
   }
-  const location = [r.comunas.join(" · "), sortRegions(r.regiones).join(" · ")].filter(Boolean).join(" · ");
+  const tribunal = document.createElement("p");
+  tribunal.className = "tribunal";
+  tribunal.textContent = r.tribunal_fuente || r.territorio || "Adscripción no informada";
+  b.appendChild(tribunal);
+  const representative = r.comunas[0] || r.territorio || "";
+  const region = sortRegions(r.regiones)[0] || "";
+  const location = [representative, region].filter(Boolean).join(" · ");
   if (location) {
     const place = document.createElement("p");
     place.className = "location";
     place.textContent = location;
     b.appendChild(place);
   }
-  if (r.id && window.ReceptoresRatings) b.appendChild(window.ReceptoresRatings.widget(r.id, { compact:true }));
+  if (r.comunas.length > 1) {
+    const coverage = document.createElement("p");
+    coverage.className = "coverage-count";
+    coverage.textContent = `Cobertura en ${fmt(r.comunas.length)} comunas`;
+    b.appendChild(coverage);
+  }
   const c = document.createElement("div");
-  c.className = "contacts";
+  c.className = "card-footer";
   const wa = r.phones.find(p => p.whatsapp && p.digits);
   const actions = document.createElement("div");
   actions.className = "actions contact-actions";
@@ -358,6 +361,7 @@ function card(r) {
     actions.appendChild(button);
   }
   if (actions.childNodes.length) c.appendChild(actions);
+  if (r.id && window.ReceptoresRatings) c.appendChild(window.ReceptoresRatings.widget(r.id, { compact:true }));
 
   article.append(a,b,c);
   return article;
@@ -439,7 +443,7 @@ function inferContactName(source) { const tokens = String(source || "").trim().s
 function contactSlug(id) { return String(id || "").replace(/^rec-\d+-/i, ""); }
 function parseContactAudit(csv) { const rows = [], current = []; let field = "", quoted = false; for (let i = 0; i < csv.length; i++) { const char = csv[i], next = csv[i + 1]; if (char === '"' && quoted && next === '"') { field += '"'; i++; } else if (char === '"') quoted = !quoted; else if (char === "," && !quoted) { current.push(field); field = ""; } else if ((char === "\n" || char === "\r") && !quoted) { if (char === "\r" && next === "\n") i++; current.push(field); rows.push(current.splice(0)); field = ""; } else field += char; } if (field || current.length) { current.push(field); rows.push(current); } const header = rows.shift() || [], index = name => header.indexOf(name); return new Map(rows.filter(row => row[index("slug")]).map(row => [row[index("slug")], { nombre_override:row[index("nombre_override")] || "", nombres_override:row[index("nombres_override")] || "", apellidos_override:row[index("apellidos_override")] || "" }])); }
 async function copyLink(button, url) { const original = "Copiar enlace"; button.disabled = true; try { if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(url); else { const input = document.createElement("textarea"); input.value = url; input.style.position = "fixed"; input.style.opacity = "0"; document.body.appendChild(input); input.select(); if (!document.execCommand("copy")) throw new Error("copy_failed"); input.remove(); } button.textContent = "Enlace copiado"; } catch (_) { button.textContent = "No se pudo copiar"; } setTimeout(() => { button.textContent = original; button.disabled = false; }, 1600); }
-function byName(a,b) { return String(a.nombre || "").localeCompare(String(b.nombre || ""),"es",{sensitivity:"base"}); }
+function byName(a,b) { return String(a.displayName || a.nombre || "").localeCompare(String(b.displayName || b.nombre || ""),"es",{sensitivity:"base"}); }
 function norm(v="") { return String(v).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9ñ]+/g," ").replace(/\s+/g," ").trim(); }
 function fmt(v) { return new Intl.NumberFormat("es-CL").format(v); }
 function formatDate(v) {
