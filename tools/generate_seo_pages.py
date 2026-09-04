@@ -19,6 +19,7 @@ SITEMAP_FILE = ROOT / "sitemap.xml"
 CONTACT_NAMES_FILE = ROOT / "data" / "nombres_contacto.csv"
 BASE_URL = "https://receptores.vukusic.cl"
 SITE_NAME = "Receptores Chile"
+ADMIN_EMAIL = "matias@vukusic.cl"
 REGION_ORDER = ["Arica y Parinacota", "Tarapacá", "Antofagasta", "Atacama", "Coquimbo", "Valparaíso", "Metropolitana de Santiago", "Libertador General Bernardo O'Higgins", "Maule", "Ñuble", "Biobío", "La Araucanía", "Los Ríos", "Los Lagos", "Aysén del General Carlos Ibáñez del Campo", "Magallanes y de la Antártica Chilena"]
 
 
@@ -81,6 +82,14 @@ def infer_contact_name(source: str) -> dict:
     else:
         confidence = "MEDIA" if len(first_surname) > 1 or len(second_surname) > 1 or len(tokens) == 3 else "ALTA"
     return {"nombres_contacto": names, "apellidos_contacto": surnames, "nombre_contacto": f"{names} {surnames}", "confianza": confidence}
+
+
+def display_name(row: dict, audit_row: dict | None = None) -> str:
+    """Nombre visible canónico; nunca modifica el nombre fuente ni el slug."""
+    source = str(row.get("nombre_original") or row.get("nombre") or "").strip()
+    inferred = infer_contact_name(source)
+    override = str((audit_row or {}).get("nombre_override") or "").strip()
+    return override or inferred.get("nombre_contacto") or source or "Receptor judicial"
 
 
 def load_contact_audit():
@@ -220,7 +229,7 @@ def collect_emails(row: dict):
 
 
 def brief_description(row: dict) -> str:
-    name = str(row.get("nombre") or "Receptor judicial")
+    name = display_name(row)
     place = str(row.get("tribunal_fuente") or row.get("corte") or "").strip()
     if place:
         text = f"{name}, receptor judicial en {place}. Datos de contacto, adscripción y cobertura. Fuente: Poder Judicial."
@@ -251,6 +260,13 @@ def render_email_rows(emails):
         parts.append(f'<li><a href="mailto:{quote(email_addr, safe="@.+-_")}">{esc(email_addr)}</a></li>')
     parts.append("</ul>")
     return "\n".join(parts)
+
+
+def render_claim_action(name: str, canonical: str) -> str:
+    subject = f"Solicitud de verificación de perfil - {name}"
+    body = f"Hola,\n\nSoy {name} y quiero reclamar/verificar mi perfil en Receptores Chile:\n\n{canonical}\n\nGracias."
+    mailto = f"mailto:{ADMIN_EMAIL}?subject={quote(subject, safe='')}&body={quote(body, safe='')}"
+    return f'<p class="profile-claim" data-profile-claim><span>¿Eres este receptor?</span> <a href="{esc(mailto)}">Reclamar este perfil →</a></p>'
 
 
 def render_vcard_action(row: dict, slug: str, canonical: str, audit_row: dict) -> str:
@@ -294,15 +310,15 @@ def render_list(values, empty_text="No informado."):
 
 
 def render_rating_widget(receptor_id: str) -> str:
-    return f'''<section class="rating-widget" data-receptor-id="{esc(receptor_id)}" aria-label="Recomendación y comentario"><div class="rating-title">Recomendaciones</div><div class="rating-summary">Cargando recomendaciones…</div><div class="rating-actions"><button type="button" data-recommend aria-label="Recomendar receptor" aria-pressed="false">Recomendar</button><button type="button" data-feedback-toggle>Enviar comentario</button></div><p class="rating-note">Las recomendaciones son anónimas. Los comentarios son privados por defecto y, si lo autorizas, pueden enviarse a moderación para aparecer en la ficha del receptor.</p><form class="rating-feedback" hidden><fieldset><legend>¿Qué influyó en tu experiencia?</legend><label><input type="checkbox" name="reason" value="rapidez"> Rapidez</label><label><input type="checkbox" name="reason" value="comunicacion"> Comunicación</label><label><input type="checkbox" name="reason" value="disponibilidad"> Disponibilidad</label><label><input type="checkbox" name="reason" value="cumplimiento"> Cumplimiento</label><label><input type="checkbox" name="reason" value="trato"> Trato</label><label><input type="checkbox" name="reason" value="honorarios"> Honorarios</label></fieldset><label class="rating-comment"><span class="rating-comment-label">Comentario opcional</span><textarea name="comment" maxlength="300" rows="3"></textarea></label><div class="turnstile-slot"><span class="turnstile-status" role="status" aria-live="polite"></span></div><button type="submit">Enviar comentario</button><span class="feedback-message" role="status"></span><label class="rating-public-consent"><input type="checkbox" name="allow_publication"> Autorizo que este comentario pueda publicarse sin mostrar mi identidad en la sección "Comentarios de usuarios" de la ficha de este receptor, sujeto a moderación.</label><p class="rating-public-note">Si no marcas esta opción, el comentario permanecerá privado.</p><p class="rating-public-note" data-publication-note hidden>Si es aprobado, aparecerá públicamente en la ficha de este receptor. La autorización no garantiza su publicación. No incluyas datos de causas, RUT, teléfonos, correos ni datos personales de terceros.</p></form></section>'''
+    return f'''<section class="rating-widget" data-receptor-id="{esc(receptor_id)}" aria-label="Recomendación y comentario"><div class="rating-title">Recomendaciones</div><div class="rating-summary" aria-live="polite">Cargando recomendaciones…</div><div class="rating-actions"><button type="button" data-recommend aria-label="Recomendar receptor" aria-pressed="false">Recomendar</button><button type="button" data-feedback-toggle>Escribir comentario</button></div><div class="rating-status" role="status" aria-live="polite"></div><p class="rating-note">Las recomendaciones son anónimas. Los comentarios son privados por defecto y, si lo autorizas, pueden enviarse a moderación para aparecer en la ficha del receptor.</p><form class="rating-feedback" hidden><div class="google-verification"><p>Para enviar comentarios debes verificarte con Google.</p><div class="google-signin-container"></div><span data-google-status role="status"></span><label class="rating-public-consent"><input type="checkbox" name="allow_publication"> Autorizo que este comentario pueda publicarse <strong>sin mostrar mi identidad</strong> en la sección "Comentarios de usuarios" de la ficha de este receptor, sujeto a moderación.</label><p class="rating-public-note">Si no marcas esta opción, el comentario permanecerá privado.</p><p class="rating-public-note" data-publication-note hidden>Si es aprobado, aparecerá públicamente en la ficha de este receptor. La autorización no garantiza su publicación. No incluyas datos de causas, RUT, teléfonos, correos ni datos personales de terceros.</p></div><fieldset><legend>¿Qué influyó en tu experiencia?</legend><label><input type="checkbox" name="reason" value="rapidez"> Rapidez</label><label><input type="checkbox" name="reason" value="comunicacion"> Comunicación</label><label><input type="checkbox" name="reason" value="disponibilidad"> Disponibilidad</label><label><input type="checkbox" name="reason" value="cumplimiento"> Cumplimiento</label><label><input type="checkbox" name="reason" value="trato"> Trato</label><label><input type="checkbox" name="reason" value="honorarios"> Honorarios</label></fieldset><label class="rating-comment"><span class="rating-comment-label">Comentario opcional</span><textarea name="comment" maxlength="300" rows="3"></textarea></label><div class="turnstile-slot"><span class="turnstile-status" role="status" aria-live="polite"></span></div><button type="submit">Enviar comentario</button><span class="feedback-message" role="status" aria-live="polite"></span></form></section>'''
 
 
 def render_public_comments(receptor_id: str) -> str:
-    return f"""<section class="section full public-comments" data-public-comments data-receptor-id="{esc(receptor_id)}"><h2>Comentarios de usuarios</h2><p class="public-comments-empty">Aún no hay comentarios públicos moderados para este receptor.</p><div class="public-comments-list"></div><p class="public-comments-note">Los comentarios que aparecen aquí fueron enviados con una cuenta Google verificada, autorizados para publicación y aprobados mediante moderación. La verificación de Google no acredita identidad legal ni una relación profesional con el receptor.</p></section>"""
+    return f"""<section class="section full public-comments" data-public-comments data-receptor-id="{esc(receptor_id)}"><h2>Experiencias de usuarios</h2><p class="public-comments-empty">Aún no hay experiencias públicas moderadas para este receptor.</p><div class="public-comments-list"></div><p class="public-comments-note">Los comentarios públicos requieren una cuenta Google verificada, autorización del usuario y moderación previa. Google verifica una cuenta, no la identidad legal de quien comenta.</p></section>"""
 
 
 def render_rating_scripts() -> str:
-    return '''<link rel="stylesheet" href="/ratings.css?v=20260901-3"><script>window.RECEPTORES_TURNSTILE_SITE_KEY = "0x4AAAAAAEkQy8FIbatMffjR";</script><script src="/ratings.js?v=20260902-6" defer></script>'''
+    return '''<link rel="stylesheet" href="/ratings.css?v=20260902-2"><script>window.RECEPTORES_TURNSTILE_SITE_KEY = "0x4AAAAAAEkQy8FIbatMffjR";</script><script src="/ratings.js?v=20260902-7" defer></script>'''
 
 
 PAGE_CSS = """
@@ -319,11 +335,23 @@ h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;margin:0 0 10px;
 .notice{margin-top:32px;padding:16px 18px;background:var(--surface);border:1px solid var(--line);font-size:14px;color:#444}.meta{margin-top:24px;font-size:13px;color:var(--muted)}
 footer{border-top:1px solid var(--line);padding:22px 0 40px;font-size:13px;color:var(--muted)}footer .shell{display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap}.public-comments-list{display:grid;gap:18px}.public-comment{border-top:1px solid var(--line);padding-top:16px}.public-comment-text{font-size:15px}.public-comment-reasons,.public-comment-meta,.public-comments-note{font-size:13px;color:var(--muted)}
 @media(max-width:650px){.header-inner{align-items:flex-start;flex-direction:column;gap:4px}main{padding-top:34px}.grid{display:block}.section,.section:nth-child(odd),.section:nth-child(even){padding:20px 0;border-left:0}}
+.profile-contact{margin:30px 0 0;padding:22px 0}.profile-contact-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}.profile-contact h3{font-size:12px;margin:0 0 8px;color:var(--muted)}.profile-contact .contact-list{font-size:14px}.profile-contact .contact-actions{margin-top:20px}.profile-contact .contact-actions button{font-weight:650}.rating-widget{margin-top:30px}.public-comments{margin-top:30px}.public-comments h2{font-size:16px;letter-spacing:0;text-transform:none;color:var(--ink)}.public-comments-empty{color:var(--muted)}
+@media(max-width:650px){.profile-contact-grid{grid-template-columns:1fr;gap:18px}}
+
+/* Dirección editorial compartida con la portada. */
+:root{--bg:#f4f2ed;--paper:#fff;--ink:#171716;--muted:#706f69;--line:#ddd9d1;--accent:#263b50;--accent-hover:#182b3d;--soft:#eceff1}
+body{background:var(--bg);color:var(--ink)}.shell{width:min(calc(100% - 40px),960px)}header{background:rgba(255,255,255,.82);border-bottom-color:rgba(221,217,209,.85)}.brand{font-family:Georgia,"Times New Roman",ui-serif,serif;font-size:18px;letter-spacing:-.02em}.back{padding:8px 0}.eyebrow{font-size:10px;letter-spacing:.13em;text-transform:uppercase;font-weight:700}main{padding:76px 0 86px}h1{font-family:Georgia,"Times New Roman",ui-serif,serif;font-size:clamp(42px,6vw,58px);font-weight:500;line-height:1.06;letter-spacing:-.045em;max-width:780px;margin-bottom:18px}.lead{font-size:17px;color:#4f4f4a;line-height:1.5;margin-bottom:48px}.section{border-bottom-color:var(--line)}.profile-contact{padding:0 0 30px;margin:0}.profile-contact h2,.public-comments h2{font-family:Georgia,"Times New Roman",ui-serif,serif;font-size:24px;font-weight:500;letter-spacing:-.02em;text-transform:none;color:var(--ink);margin-bottom:18px}.profile-contact-grid{gap:32px}.profile-contact h3{font:700 10px/1.2 Inter,system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}.profile-contact .contact-list{font-size:15px;line-height:1.6}.profile-contact .contact-actions{margin-top:24px}.profile-contact .contact-actions button{border-color:#c6c4bd;border-radius:10px;min-height:40px;padding:8px 14px}.rating-widget{border-top:0;padding-top:0;margin-top:42px}.rating-title{font-size:10px;letter-spacing:.13em}.rating-summary{font-size:15px}.rating-actions button,.rating-feedback button{border-color:#c6c4bd;border-radius:9px}.rating-actions button[data-recommend]{background:var(--accent);border-color:var(--accent)}.rating-actions button[data-recommend]:hover{background:var(--accent-hover);border-color:var(--accent-hover)}.rating-note{max-width:620px;line-height:1.6}.public-comments{margin-top:52px;padding-top:30px;border-top:1px solid var(--line)}.public-comments h2{font-size:28px}.public-comment{padding:22px 0;border-top-color:var(--line)}.public-comment-text{font-size:18px;line-height:1.65;max-width:700px}.public-comment-reasons{font-size:11px;letter-spacing:.04em}.public-comment-meta,.public-comments-note{font-size:12px;line-height:1.55}.grid{margin-top:52px}.grid .section h2{font:700 10px/1.2 Inter,system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase}.grid .section p{font-size:16px;line-height:1.55}.notice{background:#f8f7f3;border-color:var(--line);border-radius:10px}.meta{font-size:12px}footer{padding:34px 0 48px;background:rgba(255,255,255,.35)}
+@media(max-width:650px){main{padding-top:46px}.profile-contact-grid{gap:22px}.lead{margin-bottom:36px}.grid{margin-top:36px}.public-comments{margin-top:40px}.public-comment-text{font-size:17px}}
+ :root{--serif:"Source Serif 4",Georgia,"Times New Roman",serif;--sans:"Manrope",Inter,ui-sans-serif,system-ui,sans-serif}html{font-family:var(--sans)}.brand,h1,.profile-contact h2,.public-comments h2{font-family:var(--serif)}h1{max-width:700px;line-height:1.03}.profile-contact{margin-top:0}.profile-contact .contact-actions{margin-top:22px}.grid{margin-top:38px}.coverage-section details{margin-top:14px}.coverage-section details summary{cursor:pointer;color:var(--accent);font-size:13px}.coverage-section details>ul{margin-top:12px}.rating-widget{border-top:1px solid var(--line);padding-top:24px;margin-top:42px}.public-comments{margin-top:48px}.public-comments-note{max-width:680px}
+@media(max-width:650px){h1{font-size:clamp(40px,12vw,52px)}.grid{margin-top:30px}.rating-widget{margin-top:34px}}
 """
+
+PROFILE_CSS = ".profile-claim{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:22px 0 0;color:var(--muted);font-size:13px}.profile-claim a{color:var(--accent);font-weight:600}.profile-claim a:hover{color:var(--accent-hover)}"
 
 
 def render_receptor_page(row: dict, slug: str, contact_audit: dict) -> str:
-    name = str(row.get("nombre") or row.get("nombre_original") or "Receptor judicial")
+    audit_row = contact_audit.get(slug, {})
+    name = display_name(row, audit_row)
     corte = str(row.get("corte") or "").strip()
     tribunal = str(row.get("tribunal_fuente") or "").strip()
     territorio = str(row.get("territorio") or "").strip()
@@ -352,6 +380,9 @@ def render_receptor_page(row: dict, slug: str, contact_audit: dict) -> str:
 <meta name="description" content="{esc(description)}">
 <meta name="robots" content="index,follow">
 <link rel="canonical" href="{esc(canonical)}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Source+Serif+4:wght@500;600&display=swap" rel="stylesheet">
 <meta name="receptor-id" content="{esc(row.get('id'))}">
 <meta property="og:type" content="profile">
 <meta property="og:title" content="{esc(title)}">
@@ -360,37 +391,35 @@ def render_receptor_page(row: dict, slug: str, contact_audit: dict) -> str:
 <meta property="og:locale" content="es_CL">
 <meta name="twitter:card" content="summary">
 <script type="application/ld+json">{json.dumps(json_ld, ensure_ascii=False, separators=(",", ":"))}</script>
-<style>{PAGE_CSS}</style>
+<style>{PAGE_CSS}{PROFILE_CSS}</style>
 </head>
 <body>
 <header><div class="shell header-inner"><a class="brand" href="/">Receptores Chile</a><a class="back" href="/receptores/">Todos los receptores</a></div></header>
 <main class="shell">
-<p class="eyebrow">Receptor judicial · directorio no oficial</p>
+<p class="eyebrow">Receptor judicial</p>
 <h1>{esc(name)}</h1>
-<p class="lead">{esc(adscripcion)}</p>
-{render_rating_widget(str(row.get("id") or ""))}
-{render_public_comments(str(row.get("id") or ""))}
+<p class="lead">{esc(corte or "Chile")}{f" · {esc(tribunal)}" if tribunal and tribunal != corte else ""}</p>
+<section class="section full profile-contact"><h2>Contacto</h2>{render_claim_action(name, canonical)}<div class="profile-contact-grid"><div><h3>Teléfono</h3>{render_phone_rows(phones)}</div><div><h3>Correo</h3>{render_email_rows(emails)}</div></div>{render_vcard_action(row, slug, canonical, contact_audit)}</section>
 <div class="grid">
 <section class="section"><h2>Corte</h2><p>{esc(corte or "No informada")}</p></section>
 <section class="section"><h2>Tribunal / adscripción</h2><p>{esc(tribunal or "No informado")}</p></section>
-<section class="section"><h2>Teléfono</h2>{render_phone_rows(phones)}</section>
-<section class="section"><h2>Correo</h2>{render_email_rows(emails)}</section>
-<section class="section full">{render_vcard_action(row, slug, canonical, contact_audit)}</section>
-<section class="section full"><h2>Comunas cubiertas</h2>{render_list(comunas, "Cobertura comunal no informada.")}</section>
+<section class="section full coverage-section"><h2>Cobertura territorial</h2>{f'<p>Cobertura en {len(comunas)} comunas.</p><details><summary>Ver comunas</summary>{render_list(comunas, "Cobertura comunal no informada.")}</details>' if comunas else '<p>Cobertura comunal no informada.</p>'}</section>
 <section class="section full"><h2>Región</h2>{render_list(regiones, "Región no informada.")}</section>
 </div>
+{render_rating_widget(str(row.get("id") or ""))}
+{render_public_comments(str(row.get("id") or ""))}
 <div class="notice">Directorio no oficial. Los datos provienen de información publicada por el Poder Judicial. Verifica la información directamente antes de encargar una diligencia.</div>
 <p class="meta">Fuente: {esc(row.get("fuente") or "Poder Judicial")} · Actualización: {esc(row.get("fecha_fuente") or "sin fecha informada")}</p>
 </main>
-<footer><div class="shell"><span>Receptores Chile</span><span><a href="/privacidad/">Privacidad</a> · <a href="/">Volver al buscador</a></span></div></footer>
+<footer><div class="shell"><span>Receptores Chile</span><span><a href="/#metodologia">Fuente y metodología</a> · <a href="/privacidad/">Privacidad</a> · <a href="mailto:{ADMIN_EMAIL}?subject=Correcci%C3%B3n%20Receptores%20Chile">Reportar error</a> · <a href="https://github.com/mtsvk/receptores-chile" rel="noopener noreferrer">GitHub</a> · <a href="/">Volver al buscador</a></span></div></footer>
 <!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{{"token":"47df7ee006864c7cb89ac9a9ec036ba4"}}'></script><!-- End Cloudflare Web Analytics -->
 <script defer src="/analytics.js?v=20260901-3"></script>{render_rating_scripts()}</body></html>'''
 
 
-def render_directory(rows_with_slugs) -> str:
+def render_directory(rows_with_slugs, contact_audit) -> str:
     items = []
-    for row, slug in sorted(rows_with_slugs, key=lambda pair: str(pair[0].get("nombre") or "").casefold()):
-        name = str(row.get("nombre") or row.get("nombre_original") or "Receptor judicial")
+    for row, slug in sorted(rows_with_slugs, key=lambda pair: display_name(pair[0], contact_audit.get(pair[1], {})).casefold()):
+        name = display_name(row, contact_audit.get(slug, {}))
         corte = str(row.get("corte") or "").strip()
         items.append(f'<li><a href="/receptores/{esc(slug)}.html">{esc(name)}</a>' + (f'<span>{esc(corte)}</span>' if corte else "") + '</li>')
 
@@ -399,17 +428,20 @@ def render_directory(rows_with_slugs) -> str:
     return f'''<!doctype html>
 <html lang="es-CL"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{esc(title)}</title><meta name="description" content="{esc(description)}"><meta name="robots" content="index,follow"><link rel="canonical" href="{BASE_URL}/receptores/">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Source+Serif+4:wght@500;600&display=swap" rel="stylesheet">
 <style>{PAGE_CSS}
 .directory{{list-style:none;margin:34px 0 0;padding:0;border-top:1px solid var(--line)}}.directory li{{display:grid;grid-template-columns:minmax(0,1fr) minmax(180px,.6fr);gap:22px;padding:13px 0;border-bottom:1px solid var(--line);align-items:baseline}}.directory a{{font-weight:600}}.directory span{{font-size:13px;color:var(--muted)}}@media(max-width:650px){{.directory li{{grid-template-columns:1fr;gap:3px}}}}
 </style></head><body>
 <header><div class="shell header-inner"><a class="brand" href="/">Receptores Chile</a><a class="back" href="/">Buscador</a></div></header>
 <main class="shell"><p class="eyebrow">Directorio alfabético</p><h1>Receptores judiciales en Chile</h1><p class="lead">{len(rows_with_slugs)} receptores. Selecciona un nombre para ver su ficha pública.</p><ul class="directory">{''.join(items)}</ul></main>
-<footer><div class="shell"><span>Receptores Chile</span><span><a href="/privacidad/">Privacidad</a> · <a href="/">Volver al buscador</a></span></div></footer><!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{{"token":"47df7ee006864c7cb89ac9a9ec036ba4"}}'></script><!-- End Cloudflare Web Analytics -->
+<footer><div class="shell"><span>Receptores Chile</span><span><a href="/#metodologia">Fuente y metodología</a> · <a href="/privacidad/">Privacidad</a> · <a href="/">Volver al buscador</a></span></div></footer><!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{{"token":"47df7ee006864c7cb89ac9a9ec036ba4"}}'></script><!-- End Cloudflare Web Analytics -->
 <script defer src="/analytics.js?v=20260901-3"></script></body></html>'''
 
 
-def render_ranking_page() -> str:
-    return f"""<!doctype html><html lang="es-CL"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ranking de receptores judiciales | {SITE_NAME}</title><meta name="description" content="Ranking público de receptores judiciales en Chile según recomendaciones anónimas."><meta name="robots" content="index,follow"><link rel="canonical" href="{BASE_URL}/ranking/"><style>{PAGE_CSS}.ranking{{list-style:none;padding:0;margin:26px 0;border-top:1px solid var(--line)}}.ranking li{{display:grid;grid-template-columns:2fr 1fr .7fr .7fr;gap:14px;padding:14px 0;border-bottom:1px solid var(--line);align-items:baseline}}.ranking small{{color:var(--muted)}}.ranking-note{{font-size:14px;color:var(--muted);max-width:680px}}@media(max-width:650px){{.ranking li{{grid-template-columns:1fr 1fr}}}}</style></head><body><header><div class="shell header-inner"><a class="brand" href="/">Receptores Chile</a><a class="back" href="/">Buscador</a></div></header><main class="shell"><p class="eyebrow">Recomendaciones anónimas</p><h1>Ranking de recomendaciones</h1><p class="lead">El orden prioriza la cantidad de recomendaciones recibidas.</p><p class="ranking-note">Las recomendaciones reflejan interacciones de usuarios del sitio y no constituyen una evaluación profesional ni verifican una relación previa con el receptor.</p><ul id="ranking" class="ranking"><li>Cargando ranking…</li></ul></main><footer><div class="shell"><span>Receptores Chile</span><span><a href="/privacidad/">Privacidad</a> · <a href="/">Volver al buscador</a></span></div></footer><script>window.RECEPTORES_TURNSTILE_SITE_KEY="0x4AAAAAAEkQy8FIbatMffjR";</script><script src="/ratings.js?v=20260902-6" defer></script><script>const API="https://receptores-analytics.adminbase100.workers.dev";fetch("/data/receptores.json").then(r=>r.json()).then(rows=>fetch(API+"/ratings/top?limit=100").then(r=>r.json()).then(data=>{{const byId=new Map(rows.map(r=>[r.id,r]));const el=document.getElementById("ranking");const ratings=Array.isArray(data.ratings)?data.ratings:[];el.replaceChildren(...ratings.map(item=>{{const r=byId.get(item.receptor_id)||{{}};const li=document.createElement("li");const name=document.createElement("span");const link=document.createElement("a");link.href="/receptores/"+String(r.id||item.receptor_id).replace(/^rec-\\d+-/,"")+".html";link.textContent=r.nombre||item.receptor_id;name.appendChild(link);const place=document.createElement("small");place.textContent=r.corte||r.tribunal_fuente||"Adscripción no informada";const count=document.createElement("span");count.textContent=String(item.recommendations)+" recomendaciones";li.append(name,place,count);return li}}));if(!ratings.length)el.textContent="Aún no hay receptores con 5 recomendaciones.";}})).catch(()=>{{document.getElementById("ranking").textContent="No fue posible cargar el ranking.";}});</script></body></html>"""
+def render_ranking_page(rows_with_slugs, contact_audit) -> str:
+    names = {str(row.get("id") or ""): display_name(row, contact_audit.get(slug, {})) for row, slug in rows_with_slugs}
+    names_json = json.dumps(names, ensure_ascii=False, separators=(",", ":"))
+    return f"""<!doctype html><html lang="es-CL"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ranking de receptores judiciales | {SITE_NAME}</title><meta name="description" content="Ranking público de receptores judiciales en Chile según recomendaciones anónimas."><meta name="robots" content="index,follow"><link rel="canonical" href="{BASE_URL}/ranking/"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Source+Serif+4:wght@500;600&display=swap" rel="stylesheet"><style>{PAGE_CSS}.ranking{{list-style:none;padding:0;margin:26px 0;border-top:1px solid var(--line)}}.ranking li{{display:grid;grid-template-columns:2fr 1fr .7fr .7fr;gap:14px;padding:14px 0;border-bottom:1px solid var(--line);align-items:baseline}}.ranking small{{color:var(--muted)}}.ranking-note{{font-size:14px;color:var(--muted);max-width:680px}}@media(max-width:650px){{.ranking li{{grid-template-columns:1fr 1fr}}}}</style></head><body><header><div class="shell header-inner"><a class="brand" href="/">Receptores Chile</a><a class="back" href="/">Buscador</a></div></header><main class="shell"><p class="eyebrow">Recomendaciones anónimas</p><h1>Ranking de recomendaciones</h1><p class="lead">El orden prioriza la cantidad de recomendaciones recibidas.</p><p class="ranking-note">Las recomendaciones reflejan interacciones de usuarios del sitio y no constituyen una evaluación profesional ni verifican una relación previa con el receptor.</p><ul id="ranking" class="ranking"><li>Cargando ranking…</li></ul></main><footer><div class="shell"><span>Receptores Chile</span><span><a href="/privacidad/">Privacidad</a> · <a href="/">Volver al buscador</a></span></div></footer><script>window.RECEPTORES_TURNSTILE_SITE_KEY="0x4AAAAAAEkQy8FIbatMffjR";</script><script src="/ratings.js?v=20260902-7" defer></script><script>const API="https://receptores-analytics.adminbase100.workers.dev";const DISPLAY_NAMES={names_json};fetch("/data/receptores.json").then(r=>r.json()).then(rows=>fetch(API+"/ratings/top?limit=100").then(r=>r.json()).then(data=>{{const byId=new Map(rows.map(r=>[r.id,r]));const el=document.getElementById("ranking");const ratings=Array.isArray(data.ratings)?data.ratings:[];el.replaceChildren(...ratings.map(item=>{{const r=byId.get(item.receptor_id)||{{}};const li=document.createElement("li");const name=document.createElement("span");const link=document.createElement("a");link.href="/receptores/"+String(r.id||item.receptor_id).replace(/^rec-\\d+-/,"")+".html";link.textContent=DISPLAY_NAMES[item.receptor_id]||item.receptor_id;name.appendChild(link);const place=document.createElement("small");place.textContent=r.corte||r.tribunal_fuente||"Adscripción no informada";const count=document.createElement("span");count.textContent=String(item.recommendations)+" recomendaciones";li.append(name,place,count);return li}}));if(!ratings.length)el.textContent="Aún no hay receptores con 5 recomendaciones.";}})).catch(()=>{{document.getElementById("ranking").textContent="No fue posible cargar el ranking.";}});</script></body></html>"""
 
 def write_sitemap(rows_with_slugs, today: str):
     urls = [(f"{BASE_URL}/", today), (f"{BASE_URL}/receptores/", today), (f"{BASE_URL}/ranking/", today)]
@@ -446,9 +478,9 @@ def main():
         old.unlink()
     for row, slug in rows_with_slugs:
         (OUT_DIR / f"{slug}.html").write_text(render_receptor_page(row, slug, contact_audit[slug]), encoding="utf-8")
-    (OUT_DIR / "index.html").write_text(render_directory(rows_with_slugs), encoding="utf-8")
+    (OUT_DIR / "index.html").write_text(render_directory(rows_with_slugs, contact_audit), encoding="utf-8")
     RANKING_DIR.mkdir(parents=True, exist_ok=True)
-    ranking_html = render_ranking_page().replace("ratings.js?v=20260901-" + "4", "ratings.js?v=20260902-6")
+    ranking_html = render_ranking_page(rows_with_slugs, contact_audit)
     (RANKING_DIR / "index.html").write_text(ranking_html, encoding="utf-8")
 
     today = dt.date.today().isoformat()
