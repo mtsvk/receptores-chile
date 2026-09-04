@@ -41,7 +41,7 @@ body{background:var(--bg);color:var(--ink)}.shell{width:min(calc(100% - 40px),96
 @media(max-width:650px){main{padding-top:46px}.profile-contact-grid{gap:22px}.lead{margin-bottom:36px}.grid{margin-top:36px}.public-comments{margin-top:40px}.public-comment-text{font-size:17px}}
  :root{--serif:"Source Serif 4",Georgia,"Times New Roman",serif;--sans:"Manrope",Inter,ui-sans-serif,system-ui,sans-serif}html{font-family:var(--sans)}.brand,h1,.profile-contact h2,.public-comments h2{font-family:var(--serif)}h1{max-width:700px;line-height:1.03}.profile-contact{margin-top:0}.profile-contact .contact-actions{margin-top:22px}.grid{margin-top:38px}.coverage-section details{margin-top:14px}.coverage-section details summary{cursor:pointer;color:var(--accent);font-size:13px}.coverage-section details>ul{margin-top:12px}.rating-widget{border-top:1px solid var(--line);padding-top:24px;margin-top:42px}.public-comments{margin-top:48px}.public-comments-note{max-width:680px}
 @media(max-width:650px){h1{font-size:clamp(40px,12vw,52px)}.grid{margin-top:30px}.rating-widget{margin-top:34px}}
-</style>
+.profile-claim{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:22px 0 0;color:var(--muted);font-size:13px}.profile-claim a{color:var(--accent);font-weight:600}.profile-claim a:hover{color:var(--accent-hover)}</style>
 </head>
 <body>
 <header><div class="shell header-inner"><a class="brand" href="/">Receptores Chile</a><a class="back" href="/receptores/">Todos los receptores</a></div></header>
@@ -49,7 +49,7 @@ body{background:var(--bg);color:var(--ink)}.shell{width:min(calc(100% - 40px),96
 <p class="eyebrow">Receptor judicial</p>
 <h1>Taren Stephanie Bobadilla Ayala</h1>
 <p class="lead">Corte de Apelaciones de San Miguel</p>
-<section class="section full profile-contact"><h2>Contacto</h2><div class="profile-contact-grid"><div><h3>Teléfono</h3><ul class="contact-list">
+<section class="section full profile-contact"><h2>Contacto</h2><p class="profile-claim" data-profile-claim><span>¿Eres este receptor?</span> <a href="mailto:matias@vukusic.cl?subject=Solicitud%20de%20verificaci%C3%B3n%20de%20perfil%20-%20Taren%20Stephanie%20Bobadilla%20Ayala&amp;body=Hola%2C%0A%0ASoy%20Taren%20Stephanie%20Bobadilla%20Ayala%20y%20quiero%20reclamar%2Fverificar%20mi%20perfil%20en%20Receptores%20Chile%3A%0A%0Ahttps%3A%2F%2Freceptores.vukusic.cl%2Freceptores%2Fbobadilla-ayala-taren-stephanie.html%0A%0AGracias.">Reclamar este perfil →</a></p><div class="profile-contact-grid"><div><h3>Teléfono</h3><ul class="contact-list">
 <li><a href="tel:+56969173754">+56 9 6917 3754</a></li>
 </ul></div><div><h3>Correo</h3><ul class="contact-list">
 <li><a href="mailto:receptoratarenbobadilla@gmail.com">receptoratarenbobadilla@gmail.com</a></li>
@@ -70,6 +70,6 @@ document.getElementById("save-contact").addEventListener("click",()=>{const line
 <div class="notice">Directorio no oficial. Los datos provienen de información publicada por el Poder Judicial. Verifica la información directamente antes de encargar una diligencia.</div>
 <p class="meta">Fuente: Poder Judicial — Transparencia — Receptores Judiciales · Actualización: 2026-08-28</p>
 </main>
-<footer><div class="shell"><span>Receptores Chile</span><span><a href="/#metodologia">Fuente y metodología</a> · <a href="/privacidad/">Privacidad</a> · <a href="mailto:mtsvw1@gmail.com?subject=Correcci%C3%B3n%20Receptores%20Chile">Reportar error</a> · <a href="https://github.com/mtsvk/receptores-chile" rel="noopener noreferrer">GitHub</a> · <a href="/">Volver al buscador</a></span></div></footer>
+<footer><div class="shell"><span>Receptores Chile</span><span><a href="/#metodologia">Fuente y metodología</a> · <a href="/privacidad/">Privacidad</a> · <a href="mailto:matias@vukusic.cl?subject=Correcci%C3%B3n%20Receptores%20Chile">Reportar error</a> · <a href="https://github.com/mtsvk/receptores-chile" rel="noopener noreferrer">GitHub</a> · <a href="/">Volver al buscador</a></span></div></footer>
 <!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token":"47df7ee006864c7cb89ac9a9ec036ba4"}'></script><!-- End Cloudflare Web Analytics -->
 <script defer src="/analytics.js?v=20260901-3"></script><link rel="stylesheet" href="/ratings.css?v=20260902-2"><script>window.RECEPTORES_TURNSTILE_SITE_KEY = "0x4AAAAAAEkQy8FIbatMffjR";</script><script src="/ratings.js?v=20260902-7" defer></script></body></html>

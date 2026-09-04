@@ -19,6 +19,7 @@ SITEMAP_FILE = ROOT / "sitemap.xml"
 CONTACT_NAMES_FILE = ROOT / "data" / "nombres_contacto.csv"
 BASE_URL = "https://receptores.vukusic.cl"
 SITE_NAME = "Receptores Chile"
+ADMIN_EMAIL = "matias@vukusic.cl"
 REGION_ORDER = ["Arica y Parinacota", "Tarapacá", "Antofagasta", "Atacama", "Coquimbo", "Valparaíso", "Metropolitana de Santiago", "Libertador General Bernardo O'Higgins", "Maule", "Ñuble", "Biobío", "La Araucanía", "Los Ríos", "Los Lagos", "Aysén del General Carlos Ibáñez del Campo", "Magallanes y de la Antártica Chilena"]
 
 
@@ -261,6 +262,13 @@ def render_email_rows(emails):
     return "\n".join(parts)
 
 
+def render_claim_action(name: str, canonical: str) -> str:
+    subject = f"Solicitud de verificación de perfil - {name}"
+    body = f"Hola,\n\nSoy {name} y quiero reclamar/verificar mi perfil en Receptores Chile:\n\n{canonical}\n\nGracias."
+    mailto = f"mailto:{ADMIN_EMAIL}?subject={quote(subject, safe='')}&body={quote(body, safe='')}"
+    return f'<p class="profile-claim" data-profile-claim><span>¿Eres este receptor?</span> <a href="{esc(mailto)}">Reclamar este perfil →</a></p>'
+
+
 def render_vcard_action(row: dict, slug: str, canonical: str, audit_row: dict) -> str:
     phones = collect_phones(row)
     emails = collect_emails(row)
@@ -338,6 +346,8 @@ body{background:var(--bg);color:var(--ink)}.shell{width:min(calc(100% - 40px),96
 @media(max-width:650px){h1{font-size:clamp(40px,12vw,52px)}.grid{margin-top:30px}.rating-widget{margin-top:34px}}
 """
 
+PROFILE_CSS = ".profile-claim{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:22px 0 0;color:var(--muted);font-size:13px}.profile-claim a{color:var(--accent);font-weight:600}.profile-claim a:hover{color:var(--accent-hover)}"
+
 
 def render_receptor_page(row: dict, slug: str, contact_audit: dict) -> str:
     audit_row = contact_audit.get(slug, {})
@@ -381,7 +391,7 @@ def render_receptor_page(row: dict, slug: str, contact_audit: dict) -> str:
 <meta property="og:locale" content="es_CL">
 <meta name="twitter:card" content="summary">
 <script type="application/ld+json">{json.dumps(json_ld, ensure_ascii=False, separators=(",", ":"))}</script>
-<style>{PAGE_CSS}</style>
+<style>{PAGE_CSS}{PROFILE_CSS}</style>
 </head>
 <body>
 <header><div class="shell header-inner"><a class="brand" href="/">Receptores Chile</a><a class="back" href="/receptores/">Todos los receptores</a></div></header>
@@ -389,7 +399,7 @@ def render_receptor_page(row: dict, slug: str, contact_audit: dict) -> str:
 <p class="eyebrow">Receptor judicial</p>
 <h1>{esc(name)}</h1>
 <p class="lead">{esc(corte or "Chile")}{f" · {esc(tribunal)}" if tribunal and tribunal != corte else ""}</p>
-<section class="section full profile-contact"><h2>Contacto</h2><div class="profile-contact-grid"><div><h3>Teléfono</h3>{render_phone_rows(phones)}</div><div><h3>Correo</h3>{render_email_rows(emails)}</div></div>{render_vcard_action(row, slug, canonical, contact_audit)}</section>
+<section class="section full profile-contact"><h2>Contacto</h2>{render_claim_action(name, canonical)}<div class="profile-contact-grid"><div><h3>Teléfono</h3>{render_phone_rows(phones)}</div><div><h3>Correo</h3>{render_email_rows(emails)}</div></div>{render_vcard_action(row, slug, canonical, contact_audit)}</section>
 <div class="grid">
 <section class="section"><h2>Corte</h2><p>{esc(corte or "No informada")}</p></section>
 <section class="section"><h2>Tribunal / adscripción</h2><p>{esc(tribunal or "No informado")}</p></section>
@@ -401,7 +411,7 @@ def render_receptor_page(row: dict, slug: str, contact_audit: dict) -> str:
 <div class="notice">Directorio no oficial. Los datos provienen de información publicada por el Poder Judicial. Verifica la información directamente antes de encargar una diligencia.</div>
 <p class="meta">Fuente: {esc(row.get("fuente") or "Poder Judicial")} · Actualización: {esc(row.get("fecha_fuente") or "sin fecha informada")}</p>
 </main>
-<footer><div class="shell"><span>Receptores Chile</span><span><a href="/#metodologia">Fuente y metodología</a> · <a href="/privacidad/">Privacidad</a> · <a href="mailto:mtsvw1@gmail.com?subject=Correcci%C3%B3n%20Receptores%20Chile">Reportar error</a> · <a href="https://github.com/mtsvk/receptores-chile" rel="noopener noreferrer">GitHub</a> · <a href="/">Volver al buscador</a></span></div></footer>
+<footer><div class="shell"><span>Receptores Chile</span><span><a href="/#metodologia">Fuente y metodología</a> · <a href="/privacidad/">Privacidad</a> · <a href="mailto:{ADMIN_EMAIL}?subject=Correcci%C3%B3n%20Receptores%20Chile">Reportar error</a> · <a href="https://github.com/mtsvk/receptores-chile" rel="noopener noreferrer">GitHub</a> · <a href="/">Volver al buscador</a></span></div></footer>
 <!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{{"token":"47df7ee006864c7cb89ac9a9ec036ba4"}}'></script><!-- End Cloudflare Web Analytics -->
 <script defer src="/analytics.js?v=20260901-3"></script>{render_rating_scripts()}</body></html>'''
 
