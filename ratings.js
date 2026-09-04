@@ -53,6 +53,23 @@
     const status = root.querySelector("[data-google-status]");
     if (status) status.textContent = "No fue posible cargar la verificación con Google. Intenta nuevamente.";
   }
+  function emphasizeIdentity(root) {
+    const label = root.querySelector(".rating-public-consent"), target = "sin mostrar mi identidad";
+    if (!label) return;
+    const walker = document.createTreeWalker(label, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      const index = node.nodeValue.indexOf(target);
+      if (index < 0) continue;
+      const fragment = document.createDocumentFragment();
+      fragment.append(node.nodeValue.slice(0, index));
+      const strong = document.createElement("strong");
+      strong.textContent = target;
+      fragment.append(strong, node.nodeValue.slice(index + target.length));
+      node.replaceWith(fragment);
+      return;
+    }
+  }
   function browserId() { try { let id = localStorage.getItem("receptores_browser_id"); if (!/^[A-Za-z0-9_-]{16,128}$/.test(id || "")) { id = crypto.randomUUID().replaceAll("-", ""); localStorage.setItem("receptores_browser_id", id); } return id; } catch { return ""; } }
   function myVote(id) { try { return Number(localStorage.getItem(`receptores_vote:${id}`)) || 0; } catch { return 0; } }
   function markRecommended(id) { try { localStorage.setItem(`receptores_recommendation:${id}`, "1"); } catch {} }
@@ -66,6 +83,7 @@
       return root;
     }
     root.innerHTML = `<div class="rating-title">Recomendaciones</div><div class="rating-summary" aria-live="polite">Cargando recomendaciones…</div><div class="rating-actions"><button type="button" data-recommend aria-label="Recomendar receptor" aria-pressed="false">Recomendar</button><button type="button" data-feedback-toggle>Enviar comentario</button></div><div class="rating-status" role="status" aria-live="polite"></div><p class="rating-note">Las recomendaciones son anónimas. Los comentarios son privados por defecto y, si lo autorizas, pueden enviarse a moderación para aparecer en la ficha del receptor.</p><form class="rating-feedback" hidden><div class="google-verification"><p>Para enviar comentarios debes verificarte con Google.</p><div class="google-signin-container"></div><span data-google-status role="status"></span><label class="rating-public-consent"><input type="checkbox" name="allow_publication"> Autorizo que este comentario pueda publicarse sin mostrar mi identidad en la sección "Comentarios de usuarios" de la ficha de este receptor, sujeto a moderación.</label><p class="rating-public-note">Si no marcas esta opción, el comentario permanecerá privado.</p><p class="rating-public-note" data-publication-note hidden>Si es aprobado, aparecerá públicamente en la ficha de este receptor. La autorización no garantiza su publicación. No incluyas datos de causas, RUT, teléfonos, correos ni datos personales de terceros.</p></div><fieldset><legend>¿Qué influyó en tu experiencia?</legend>${REASONS.map(reason => `<label><input type="checkbox" name="reason" value="${reason}"> ${LABELS[reason]}</label>`).join("")}</fieldset><label class="rating-comment"><span class="rating-comment-label">Comentario opcional</span><textarea name="comment" maxlength="300" rows="3"></textarea></label><div class="turnstile-slot"><span class="turnstile-status" role="status" aria-live="polite"></span></div><button type="submit">Enviar comentario</button><span class="feedback-message" role="status" aria-live="polite"></span></form>`;
+    emphasizeIdentity(root);
     root.querySelector("button[data-feedback-toggle]").textContent = "Escribir comentario";
     root.addEventListener("click", event => { if (event.target.closest("button[data-recommend]")) chooseRecommend(root); if (event.target.closest("button[data-feedback-toggle]")) toggleFeedback(root); });
     root.querySelector("form").addEventListener("submit", event => { event.preventDefault(); requestSubmission(root, submitFeedback); });

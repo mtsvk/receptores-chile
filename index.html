@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Source+Serif+4:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="app-v4.css?v=20260903-1">
+<link rel="stylesheet" href="app-v4.css?v=20260903-3">
 <link rel="stylesheet" href="ratings.css?v=20260902-2">
 <meta property="og:title" content="Receptores judiciales en Chile | Receptores Chile">
 <meta property="og:description" content="Busca receptores judiciales en Chile por nombre, comuna, tribunal, Corte y datos de contacto.">
@@ -66,10 +66,18 @@
     </div>
   </section>
 
+  <section class="explore" id="explorar" aria-labelledby="exploreTitle">
+    <div class="section-heading">
+      <div><p class="eyebrow">Navegación territorial</p><h2 id="exploreTitle">Explorar por Corte de Apelaciones</h2></div>
+      <button id="showAll" class="text-button" type="button">Ver todos los receptores</button>
+    </div>
+    <div id="courtGrid" class="court-grid"></div>
+  </section>
+
   <section class="results" aria-label="Resultados">
     <div class="results-head">
       <h2 id="status" role="status" aria-live="polite">Cargando…</h2>
-      <p id="resultContext"></p>
+      <div class="result-tools"><label for="sort">Ordenar por</label><select id="sort"><option value="relevance">Relevancia</option><option value="name">A–Z</option></select></div>
     </div>
 
     <div id="error" class="error" hidden></div>
@@ -104,7 +112,7 @@
   </div>
 </footer>
 
-<script src="app-v4.js?v=20260903-2" defer></script>
+<script src="app-v4.js?v=20260903-4" defer></script>
 <script>window.RECEPTORES_TURNSTILE_SITE_KEY = "0x4AAAAAAEkQy8FIbatMffjR";</script>
 <script src="ratings.js?v=20260902-7" defer></script>
 <!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token":"47df7ee006864c7cb89ac9a9ec036ba4"}'></script><!-- End Cloudflare Web Analytics -->

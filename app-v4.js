@@ -15,12 +15,13 @@ const els = {
   q:$("q"), clear:$("clear"), corte:$("corte"), region:$("region"), comuna:$("comuna"),
   contacto:$("contacto"), reset:$("reset"), status:$("status"),
   dataset:$("dataset"), list:$("list"), empty:$("empty"), filterSummary:$("filterSummary"),
-  moreWrap:$("moreWrap"), more:$("more"), error:$("error")
+  moreWrap:$("moreWrap"), more:$("more"), error:$("error"), explore:$("explorar"), courtGrid:$("courtGrid"), showAll:$("showAll"), sort:$("sort")
 };
 
 let rows = [];
 let filtered = [];
 let visible = PAGE;
+let browseAll = false;
 let comunaInfo = new Map();
 let corteInfo = [];
 let contactNames = new Map();
@@ -60,6 +61,7 @@ async function init() {
     fillFilters();
     restoreUrl();
     renderMeta(meta);
+    renderCourts();
     apply(false);
   } catch (err) {
     console.error(err);
@@ -72,18 +74,25 @@ async function init() {
 function bind() {
   let timer;
   els.q.addEventListener("input", () => {
+    browseAll = true;
     els.clear.hidden = !els.q.value;
     clearTimeout(timer);
-    timer = setTimeout(() => { visible = PAGE; apply(); }, 90);
+    timer = setTimeout(() => {
+      if (!hasActiveContext()) browseAll = false;
+      visible = PAGE;
+      apply();
+    }, 90);
   });
   els.clear.addEventListener("click", () => {
     els.q.value = "";
     els.clear.hidden = true;
+    browseAll = false;
     visible = PAGE;
     apply();
     els.q.focus();
   });
   [els.corte, els.region, els.comuna, els.contacto].forEach(el => el.addEventListener("change", () => {
+    browseAll = true;
     if (el === els.region) {
       populateComunaOptions();
       els.comuna.value = "";
@@ -94,6 +103,7 @@ function bind() {
   els.reset.addEventListener("click", () => {
     els.q.value = "";
     els.clear.hidden = true;
+    browseAll = false;
     els.corte.value = "";
     els.region.value = "";
     els.comuna.value = "";
@@ -106,6 +116,9 @@ function bind() {
     visible += PAGE;
     render();
   });
+  els.showAll.addEventListener("click", () => { browseAll = true; els.q.value = ""; els.clear.hidden = true; els.corte.value = ""; els.region.value = ""; els.comuna.value = ""; els.contacto.value = ""; visible = PAGE; apply(); els.list.scrollIntoView({ behavior:"smooth", block:"start" }); });
+  els.courtGrid.addEventListener("click", event => { const button = event.target.closest("[data-court]"); if (!button) return; browseAll = true; els.corte.value = button.dataset.court; visible = PAGE; apply(); els.list.scrollIntoView({ behavior:"smooth", block:"start" }); });
+  els.sort.addEventListener("change", () => apply(false));
 }
 
 function prepare(r) {
@@ -221,6 +234,17 @@ function renderMeta(meta) {
   els.dataset.textContent = `${fmt(total)} receptores${date ? " · actualización " + formatDate(date) : ""}`;
 }
 
+function renderCourts() {
+  const counts = new Map();
+  rows.forEach(r => { if (r.corte) counts.set(r.corte, (counts.get(r.corte) || 0) + 1); });
+  els.courtGrid.replaceChildren(...[...counts.keys()].sort(compareCourts).map(corte => {
+    const button = document.createElement("button"); button.type = "button"; button.className = "court-tile"; button.dataset.court = corte;
+    const name = document.createElement("span"); name.className = "court-tile-name"; name.textContent = corte.replace(/^Corte de Apelaciones de\s+/i, "");
+    const count = document.createElement("span"); count.className = "court-tile-count"; count.textContent = `${fmt(counts.get(corte))} receptores`;
+    button.append(name, count); return button;
+  }));
+}
+
 function apply(updateUrl = true) {
   const tokens = norm(els.q.value).split(/\s+/).filter(Boolean);
   const corte = norm(els.corte.value);
@@ -240,12 +264,17 @@ function apply(updateUrl = true) {
   });
 
   if (updateUrl) saveUrl();
+  filtered.sort(compareResults);
   render();
 }
 
 function render() {
   const shown = filtered.slice(0, visible);
-  els.list.replaceChildren(...shown.map(card));
+  updateSortLabel();
+  els.list.replaceChildren(...shown.map(compactCard));
+  const hasContext = hasActiveContext();
+  els.explore.hidden = hasContext || browseAll;
+  document.querySelector(".results").hidden = !hasContext && !browseAll;
   els.empty.hidden = filtered.length !== 0;
   const active = [els.q.value.trim(), els.corte.value, els.region.value, els.comuna.value, els.contacto.value].filter(Boolean);
   els.filterSummary.hidden = !active.length;
@@ -366,6 +395,69 @@ function card(r) {
   article.append(a,b,c);
   return article;
 }
+
+function compactCard(r) {
+  const article = document.createElement("article");
+  article.className = "card compact-result";
+  if (r.id) article.id = r.id;
+
+  const main = document.createElement("div"); main.className = "card-main";
+  const name = document.createElement("h3"); name.className = "name";
+  if (r.id) { const link = document.createElement("a"); link.href = canonicalUrl(r); link.textContent = r.displayName; name.appendChild(link); }
+  else name.textContent = r.displayName;
+  main.appendChild(name);
+
+  const info = document.createElement("div"); info.className = "card-jurisdiction";
+  const representative = representativeLocation(r);
+  const region = sortRegions(r.regiones)[0] || "";
+  const location = [representative, region, r.corte].filter(Boolean).join(" · ");
+  if (location) { const place = document.createElement("p"); place.className = "location"; place.textContent = location; info.appendChild(place); }
+  if (r.tribunal_fuente || r.territorio) { const tribunal = document.createElement("p"); tribunal.className = "tribunal"; tribunal.textContent = r.tribunal_fuente || r.territorio; info.appendChild(tribunal); }
+  if (r.comunas.length) {
+    const coverage = document.createElement("p"); coverage.className = "coverage-count";
+    coverage.textContent = `Cobertura en ${fmt(r.comunas.length)} comuna${r.comunas.length === 1 ? "" : "s"}`; info.appendChild(coverage);
+  }
+
+  const footer = document.createElement("div"); footer.className = "card-footer";
+  const actions = document.createElement("div"); actions.className = "actions contact-actions";
+  const wa = r.phones.find(p => p.whatsapp && p.digits);
+  const phone = r.phones.find(p => p.href);
+  if (wa) actions.appendChild(contactLink(arr(r.whatsapp_links_seguros)[0] || `https://wa.me/56${wa.digits}`, "Contactar por WhatsApp", "whatsapp", true));
+  if (phone) actions.appendChild(contactLink(phone.href, "Llamar", "phone"));
+  if (r.emails[0]) actions.appendChild(contactLink(`mailto:${r.emails[0]}`, "Enviar correo", "email"));
+  if (r.id) { const detail = document.createElement("a"); detail.className = "action-link"; detail.href = canonicalUrl(r); detail.textContent = "Ver perfil →"; actions.appendChild(detail); }
+  footer.appendChild(actions); article.append(main, info, footer); return article;
+}
+
+function compareResults(a, b) { return els.sort.value === "name" ? byName(a, b) : score(b) - score(a) || byName(a, b); }
+function score(r) {
+  const tokens = norm(els.q.value).split(/\s+/).filter(Boolean); if (!tokens.length) return 0;
+  const name = norm([r.displayName, r.nombre, r.nombre_original].filter(Boolean).join(" "));
+  const tribunal = norm([r.tribunal_fuente, r.territorio, ...r.tribunales].filter(Boolean).join(" "));
+  const comuna = norm(r.comunas.join(" ")); const corte = norm(r.corte || "");
+  return tokens.reduce((total, token) => total + (name.includes(token) ? 100 : 0) + (tribunal.includes(token) ? 50 : 0) + (comuna.includes(token) ? 35 : 0) + (corte.includes(token) ? 20 : 0), 0);
+}
+
+const CONTACT_ICONS = {
+  whatsapp: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9.25" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8.7 7.9c.2-.3.5-.3.8-.1l1.1 1.1c.2.2.2.5.1.7l-.5.7c.6 1.1 1.5 2 2.6 2.6l.7-.5c.2-.1.5-.1.7.1l1.1 1.1c.2.2.2.6-.1.8-.5.5-1.2.8-1.9.6-2-.5-4.6-3.1-5.1-5.1-.2-.7.1-1.4.6-1.9Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="m7.1 16.9-.5 2 2-.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  phone: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7.3 4.3 9.7 3.5l1.6 4.1-1.8 1.3a13.3 13.3 0 0 0 5.6 5.6l1.3-1.8 4.1 1.6-.8 2.4c-.3 1-1.3 1.6-2.3 1.4A16.1 16.1 0 0 1 5.9 6.6c-.2-1 .4-2 1.4-2.3Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  email: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3.5" y="5.5" width="17" height="13" rx="1.8" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="m4.5 7 7.5 5.5L19.5 7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+};
+
+function contactLink(href, label, icon, newTab = false) {
+  const link = document.createElement("a");
+  link.className = "contact-link";
+  link.href = href;
+  link.setAttribute("aria-label", label);
+  link.title = label;
+  link.innerHTML = CONTACT_ICONS[icon];
+  if (newTab) { link.target = "_blank"; link.rel = "noopener noreferrer"; }
+  return link;
+}
+
+function representativeLocation(r) { return r.comunas.length === 1 ? r.comunas[0] : ""; }
+function hasActiveContext() { return Boolean(els.q.value.trim() || els.corte.value || els.region.value || els.comuna.value || els.contacto.value); }
+function updateSortLabel() { els.sort.options[0].textContent = els.q.value.trim() ? "Coincidencia textual" : "Orden predeterminado"; }
 
 function details(r) {
   const d = document.createElement("details");
