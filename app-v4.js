@@ -7,6 +7,8 @@ const META_URL = "data/meta.json";
 const COMUNAS_URL = "data/comunas.json";
 const CORTES_URL = "data/cortes.json";
 const PAGE = 60;
+const COURT_GRID_ORDER = ["arica","iquique","antofagasta","copiapo","la serena","valparaiso","santiago","san miguel","rancagua","talca","chillan","concepcion","temuco","valdivia","puerto montt","coyhaique","punta arenas"];
+const COURT_GRID_ALIASES = new Map([["coihaique", "coyhaique"]]);
 const ESTIMATED = new Set(["territory_inferred_from_court_not_specific_tribunal","court_level_assignment"]);
 const REGION_ORDER = ["Arica y Parinacota","Tarapacá","Antofagasta","Atacama","Coquimbo","Valparaíso","Metropolitana de Santiago","Libertador General Bernardo O'Higgins","Maule","Ñuble","Biobío","La Araucanía","Los Ríos","Los Lagos","Aysén del General Carlos Ibáñez del Campo","Magallanes y de la Antártica Chilena"];
 
@@ -237,9 +239,9 @@ function renderMeta(meta) {
 function renderCourts() {
   const counts = new Map();
   rows.forEach(r => { if (r.corte) counts.set(r.corte, (counts.get(r.corte) || 0) + 1); });
-  els.courtGrid.replaceChildren(...[...counts.keys()].sort(compareCourts).map(corte => {
+  els.courtGrid.replaceChildren(...[...counts.keys()].sort((a, b) => courtGridRank(a) - courtGridRank(b)).map(corte => {
     const button = document.createElement("button"); button.type = "button"; button.className = "court-tile"; button.dataset.court = corte;
-    const name = document.createElement("span"); name.className = "court-tile-name"; name.textContent = corte.replace(/^Corte de Apelaciones de\s+/i, "");
+    const name = document.createElement("span"); name.className = "court-tile-name"; name.textContent = courtGridLabel(corte);
     const count = document.createElement("span"); count.className = "court-tile-count"; count.textContent = `${fmt(counts.get(corte))} receptores`;
     button.append(name, count); return button;
   }));
@@ -516,6 +518,9 @@ function compareGeographic(a,b) { return String(a).localeCompare(String(b),"es",
 function canonicalRegion(value) { const key = norm(value); return REGION_ORDER.find(region => norm(region) === key) || value; }
 function regionRank(value) { const index = REGION_ORDER.findIndex(region => norm(region) === norm(value)); return index < 0 ? REGION_ORDER.length : index; }
 function sortRegions(values) { return [...(values || [])].sort((a,b) => regionRank(a) - regionRank(b) || compareGeographic(a,b)); }
+function courtGridKey(value) { const suffix = norm(value).replace(/^corte de apelaciones de\s+/, ""); return COURT_GRID_ALIASES.get(suffix) || suffix; }
+function courtGridRank(value) { const index = COURT_GRID_ORDER.indexOf(courtGridKey(value)); return index < 0 ? COURT_GRID_ORDER.length : index; }
+function courtGridLabel(value) { const suffix = String(value).replace(/^Corte de Apelaciones de\s+/i, ""); return suffix === "la Serena" ? "La Serena" : suffix === "Coihaique" ? "Coyhaique" : suffix; }
 function compareCourts(a,b) { const regionA = corteInfo.find(c => c.nombre === a)?.regiones_comunas?.map(name => comunaInfo.get(norm(name))?.region).find(Boolean); const regionB = corteInfo.find(c => c.nombre === b)?.regiones_comunas?.map(name => comunaInfo.get(norm(name))?.region).find(Boolean); return regionRank(regionA) - regionRank(regionB) || compareGeographic(a,b); }
 function canonicalUrl(r) { return `https://receptores.vukusic.cl/receptores/${String(r.id || "").replace(/^rec-\d+-/i, "")}.html`; }
 function vcardEscape(value) { return String(value || "").replace(/([\\,;])/g, "\\$1").replace(/\r?\n|\r/g, "\\n"); }
